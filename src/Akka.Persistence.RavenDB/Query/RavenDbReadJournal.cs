@@ -1,10 +1,10 @@
-﻿using System.Text.RegularExpressions;
-using Akka.Actor;
+﻿using Akka.Actor;
 using Akka.Configuration;
 using Akka.Persistence.Query;
 using Akka.Streams.Dsl;
 using System.Threading.Channels;
 using Akka.Persistence.RavenDB.Journal;
+using Akka.Persistence.RavenDB.Journal.Types;
 using Akka.Persistence.Serialization;
 using Raven.Client.Documents.Subscriptions;
 
@@ -31,7 +31,6 @@ namespace Akka.Persistence.RavenDB.Query
         private readonly JournalRavenDbPersistence _ravendb;
         private readonly PersistenceMessageSerializer _serializer;
 
-        /// <inheritdoc />
         public RavenDbReadJournal(ExtendedActorSystem system, Config config)
         {
             _writeJournalPluginId = config.GetString("write-plugin");
@@ -47,34 +46,31 @@ namespace Akka.Persistence.RavenDB.Query
         public Source<string, NotUsed> PersistenceIds()
         {
             var persistenceIdsChannel = Channel.CreateBounded<string>(_maxBufferSize);
-
-            var subscription = RavenDbPersistence.Instance.Subscriptions.Update(new SubscriptionUpdateOptions
+            var subscription = RavenDbPersistence.Instance.Subscriptions.Create(new SubscriptionCreationOptions<ActorId>
             {
-                Query = "from UniqueActors",
-                Name = $"PersistenceIds/{_system.Name}",
-                CreateNew = true
+                Name = $"{_system.Name}/PersistenceIds/{Guid.NewGuid()}",
             }, _ravendb.Database);
 
-            var worker = RavenDbPersistence.Instance.Subscriptions.GetSubscriptionWorker<RavenDbJournal.UniqueActor>(subscription, _ravendb.Database);
+            var worker = RavenDbPersistence.Instance.Subscriptions.GetSubscriptionWorker<ActorId>(subscription, _ravendb.Database);
             worker.Run(async batch =>
             {
                 foreach (var item in batch.Items)
                 {
                     await persistenceIdsChannel.Writer.WriteAsync(item.Result.PersistenceId);
                 }
-            }).ContinueWith(t=>
+            }).ContinueWith(async t=>
             {
                 try
                 {
-                    t.GetAwaiter().GetResult(); // already completed
+                    await t; // already completed
+                    persistenceIdsChannel.Writer.TryComplete();
                 }
                 catch (Exception e)
                 {
                     persistenceIdsChannel.Writer.TryComplete(e);
-                    return;
                 }
 
-                persistenceIdsChannel.Writer.TryComplete();
+                await RavenDbPersistence.Instance.Subscriptions.DeleteAsync(subscription, _ravendb.Database);
             });
 
             return Source.ChannelReader(persistenceIdsChannel.Reader);
@@ -88,8 +84,7 @@ namespace Akka.Persistence.RavenDB.Query
                 try
                 {
                     using var session = _ravendb.OpenAsyncSession();
-
-                    var results = await session.Advanced.StreamAsync(session.Query<RavenDbJournal.UniqueActor>());
+                    await using var results = await session.Advanced.StreamAsync(session.Query<ActorId>());
                     while (await results.MoveNextAsync())
                     {
                         var id = results.Current.Document.PersistenceId;
@@ -110,20 +105,20 @@ namespace Akka.Persistence.RavenDB.Query
         public Source<EventEnvelope, NotUsed> EventsByPersistenceId(string persistenceId, long fromSequenceNr, long toSequenceNr)
         {
             var eventsByPersistenceId = Channel.CreateBounded<EventEnvelope>(_maxBufferSize);
-            var subscription = RavenDbPersistence.Instance.Subscriptions.Update(new SubscriptionUpdateOptions
+            var prefix = RavenDbJournal.GetEventPrefix(persistenceId);
+            var subscription = RavenDbPersistence.Instance.Subscriptions.Create(new SubscriptionCreationOptions<Journal.Types.Event>
             {
-                Query = $"from JournalEvents where startsWith(id(),'{RavenDbJournal.GetEventPrefix(persistenceId)}') AND SequenceNr >= {fromSequenceNr} AND SequenceNr <= {toSequenceNr}",
-                Name = $"EventsByPersistenceId/{persistenceId}/{fromSequenceNr}/{toSequenceNr}/{_system.Name}",
-                CreateNew = true
+                Filter = e => e.Id.StartsWith(prefix) && e.SequenceNr >= fromSequenceNr && e.SequenceNr <= toSequenceNr,
+                Name = $"{_system.Name}/EventsByPersistenceId/{persistenceId}/{Guid.NewGuid()}",
             }, _ravendb.Database);
 
-            var worker = RavenDbPersistence.Instance.Subscriptions.GetSubscriptionWorker<RavenDbJournal.JournalEvent>(subscription, _ravendb.Database);
+            var worker = RavenDbPersistence.Instance.Subscriptions.GetSubscriptionWorker<Journal.Types.Event>(subscription, _ravendb.Database);
             worker.Run(async batch =>
             {
                 foreach (var item in batch.Items)
                 {
                     var @event = item.Result;
-                    var persistent = RavenDbJournal.JournalEvent.Deserialize(_serializer, @event, ActorRefs.NoSender);
+                    var persistent = Journal.Types.Event.Deserialize(_serializer, @event, ActorRefs.NoSender);
                     var e = new EventEnvelope(new ChangeVectorOffset(item.ChangeVector), @event.PersistenceId, @event.SequenceNr, persistent.Payload, @event.Timestamp, @event.Tags);
                     await eventsByPersistenceId.Writer.WriteAsync(e);
                     
@@ -132,19 +127,19 @@ namespace Akka.Persistence.RavenDB.Query
                         await worker.DisposeAsync(waitForSubscriptionTask: false);
                     }
                 }
-            }).ContinueWith(t=>
+            }).ContinueWith(async t=>
             {
                 try
                 {
-                    t.GetAwaiter().GetResult(); // already completed
+                    await t; // already completed
+                    eventsByPersistenceId.Writer.TryComplete();
                 }
                 catch (Exception e)
                 {
                     eventsByPersistenceId.Writer.TryComplete(e);
-                    return;
                 }
 
-                eventsByPersistenceId.Writer.TryComplete();
+                await RavenDbPersistence.Instance.Subscriptions.DeleteAsync(subscription, _ravendb.Database);
             });
 
             return Source.ChannelReader(eventsByPersistenceId.Reader);
@@ -158,14 +153,16 @@ namespace Akka.Persistence.RavenDB.Query
                 try
                 {
                     using var session = _ravendb.OpenAsyncSession();
-                    var results = await session.Advanced.StreamAsync<RavenDbJournal.JournalEvent>(startsWith: RavenDbJournal.GetEventPrefix(persistenceId), startAfter: RavenDbJournal.GetSequenceId(persistenceId, fromSequenceNr));
+                    session.Advanced.SessionInfo.SetContext(persistenceId);
+
+                    await using var results = await session.Advanced.StreamAsync<Journal.Types.Event>(startsWith: RavenDbJournal.GetEventPrefix(persistenceId), startAfter: RavenDbJournal.GetSequenceId(persistenceId, fromSequenceNr));
                     while (await results.MoveNextAsync())
                     {
                         var @event = results.Current.Document;
                         if (results.Current.Document.SequenceNr > toSequenceNr)
                             break;
 
-                        var persistent = RavenDbJournal.JournalEvent.Deserialize(_serializer, @event, ActorRefs.NoSender);
+                        var persistent = Journal.Types.Event.Deserialize(_serializer, @event, ActorRefs.NoSender);
                         var e = new EventEnvelope(new ChangeVectorOffset(results.Current.ChangeVector), @event.PersistenceId, @event.SequenceNr, persistent.Payload, @event.Timestamp, @event.Tags);
                         await currentEventsByPersistenceIdChannel.Writer.WriteAsync(e);
                     }
@@ -185,37 +182,36 @@ namespace Akka.Persistence.RavenDB.Query
         {
             var eventByTag = Channel.CreateBounded<EventEnvelope>(_maxBufferSize);
 
-            var subscription = RavenDbPersistence.Instance.Subscriptions.Update(new SubscriptionUpdateOptions
+            var subscription = RavenDbPersistence.Instance.Subscriptions.Create(new SubscriptionCreationOptions<Journal.Types.Event>
             {
-                Query = $"from JournalEvents as j where j.Tags.includes('{tag}')",
-                Name = $"EventsByTag/{tag}/{_system.Name}",
-                CreateNew = true,
+                Filter = e => e.Tags.Contains(tag),
+                Name = $"{_system.Name}/EventsByTag/{tag}/{Guid.NewGuid()}",
                 ChangeVector = Offset(offset)
             }, _ravendb.Database);
 
-            var worker = RavenDbPersistence.Instance.Subscriptions.GetSubscriptionWorker<RavenDbJournal.JournalEvent>(subscription, _ravendb.Database);
+            var worker = RavenDbPersistence.Instance.Subscriptions.GetSubscriptionWorker<Journal.Types.Event>(subscription, _ravendb.Database);
             worker.Run(async batch =>
             {
                 foreach (var item in batch.Items)
                 {
                     var @event = item.Result;
-                    var persistent = RavenDbJournal.JournalEvent.Deserialize(_serializer, @event, ActorRefs.NoSender);
+                    var persistent = Journal.Types.Event.Deserialize(_serializer, @event, ActorRefs.NoSender);
                     var e = new EventEnvelope(new ChangeVectorOffset(item.ChangeVector), @event.PersistenceId, @event.SequenceNr, persistent.Payload, @event.Timestamp, @event.Tags);
                     await eventByTag.Writer.WriteAsync(e);
                 }
-            }).ContinueWith(t=>
+            }).ContinueWith(async t=>
             {
                 try
                 {
-                    t.GetAwaiter().GetResult(); // already completed
+                    await t;
+                    eventByTag.Writer.TryComplete();
                 }
                 catch (Exception e)
                 {
                     eventByTag.Writer.TryComplete(e);
-                    return;
                 }
 
-                eventByTag.Writer.TryComplete();
+                await RavenDbPersistence.Instance.Subscriptions.DeleteAsync(subscription, _ravendb.Database);
             });
 
             return Source.ChannelReader(eventByTag.Reader);
@@ -229,8 +225,8 @@ namespace Akka.Persistence.RavenDB.Query
                 try
                 {
                     using var session = _ravendb.OpenAsyncSession();
-                    var q = session.Query<RavenDbJournal.JournalEvent>();
-                    var results = await session.Advanced.StreamAsync(q.Where(j => j.Tags.Contains(tag)));
+                    var q = session.Query<Journal.Types.Event>();
+                    await using var results = await session.Advanced.StreamAsync(q.Where(j => j.Tags.Contains(tag)));
                     while (await results.MoveNextAsync())
                     {
                         var @event = results.Current.Document;
@@ -239,7 +235,7 @@ namespace Akka.Persistence.RavenDB.Query
                         if (currentChangeVectorOffset.CompareTo(offset) <= 0)
                             continue;
 
-                        var persistent = RavenDbJournal.JournalEvent.Deserialize(_serializer, @event, ActorRefs.NoSender);
+                        var persistent = Journal.Types.Event.Deserialize(_serializer, @event, ActorRefs.NoSender);
                         var e = new EventEnvelope(new ChangeVectorOffset(results.Current.ChangeVector), @event.PersistenceId, @event.SequenceNr, persistent.Payload, @event.Timestamp, @event.Tags);
                         await currentEventsByTag.Writer.WriteAsync(e);
                     }
@@ -259,37 +255,35 @@ namespace Akka.Persistence.RavenDB.Query
         {
             var allEventsChannel = Channel.CreateBounded<EventEnvelope>(_maxBufferSize);
 
-            var subscription = RavenDbPersistence.Instance.Subscriptions.Update(new SubscriptionUpdateOptions
+            var subscription = RavenDbPersistence.Instance.Subscriptions.Create(new SubscriptionCreationOptions<Journal.Types.Event>
             {
-                Query = $"from JournalEvents",
-                Name = $"AllEvents/{_system.Name}",
-                CreateNew = true,
+                Name = $"{_system.Name}/AllEvents/{Guid.NewGuid()}",
                 ChangeVector = Offset(offset)
             }, _ravendb.Database);
 
-            var worker = RavenDbPersistence.Instance.Subscriptions.GetSubscriptionWorker<RavenDbJournal.JournalEvent>(subscription, _ravendb.Database);
+            var worker = RavenDbPersistence.Instance.Subscriptions.GetSubscriptionWorker<Journal.Types.Event>(subscription, _ravendb.Database);
             worker.Run(async batch =>
             {
                 foreach (var item in batch.Items)
                 {
                     var @event = item.Result;
-                    var persistent = RavenDbJournal.JournalEvent.Deserialize(_serializer, @event, ActorRefs.NoSender);
+                    var persistent = Journal.Types.Event.Deserialize(_serializer, @event, ActorRefs.NoSender);
                     var e = new EventEnvelope(new ChangeVectorOffset(item.ChangeVector), @event.PersistenceId, @event.SequenceNr, persistent.Payload, @event.Timestamp, @event.Tags);
                     await allEventsChannel.Writer.WriteAsync(e);
                 }
-            }).ContinueWith(t=>
+            }).ContinueWith(async t=>
             {
                 try
                 {
-                    t.GetAwaiter().GetResult(); // already completed
+                    await t;// already completed
+                    allEventsChannel.Writer.TryComplete();
                 }
                 catch (Exception e)
                 {
                     allEventsChannel.Writer.TryComplete(e);
-                    return;
                 }
 
-                allEventsChannel.Writer.TryComplete();
+                await RavenDbPersistence.Instance.Subscriptions.DeleteAsync(subscription, _ravendb.Database);
             });
 
             return Source.ChannelReader(allEventsChannel.Reader);
@@ -303,7 +297,7 @@ namespace Akka.Persistence.RavenDB.Query
                 try
                 {
                     using var session = _ravendb.OpenAsyncSession();
-                    var results = await session.Advanced.StreamAsync(session.Query<RavenDbJournal.JournalEvent>());
+                    await using var results = await session.Advanced.StreamAsync(session.Query<Journal.Types.Event>());
                     while (await results.MoveNextAsync())
                     {
                         var @event = results.Current.Document;
@@ -311,7 +305,7 @@ namespace Akka.Persistence.RavenDB.Query
                         if (currentChangeVectorOffset.CompareTo(offset) <= 0)
                             continue;
 
-                        var persistent = RavenDbJournal.JournalEvent.Deserialize(_serializer, @event, ActorRefs.NoSender);
+                        var persistent = Journal.Types.Event.Deserialize(_serializer, @event, ActorRefs.NoSender);
                         var e = new EventEnvelope(new ChangeVectorOffset(results.Current.ChangeVector), @event.PersistenceId, @event.SequenceNr, persistent.Payload, @event.Timestamp, @event.Tags);
                         await currentAllEvents.Writer.WriteAsync(e);
                     }
@@ -333,48 +327,8 @@ namespace Akka.Persistence.RavenDB.Query
                 null => null,
                 NoOffset _ => null,
                 ChangeVectorOffset changeVector => changeVector.ToString(),
+                Sequence seq => seq.Value == 0 ? null : throw new ArgumentException($"ReadJournal does not support {offset.GetType().Name} with offset other than zero."),
                 _ => throw new ArgumentException($"ReadJournal does not support {offset.GetType().Name} offsets")
             };
-
-        public class ChangeVectorOffset : Offset
-        {
-            private readonly string _changeVector;
-
-            public ChangeVectorOffset(string changeVector)
-            {
-                _changeVector = changeVector;
-            }
-
-            public override int CompareTo(Offset other)
-            {
-                if (other == null)
-                    return 1;
-
-                if (ReferenceEquals(this, other))
-                    return 0;
-
-                if (other is NoOffset)
-                {
-                    if (_changeVector == null)
-                        return 0;
-
-                    return 1;
-                }
-
-                if (other is Sequence { Value: 0 }) 
-                    return 1;
-
-                if (other is ChangeVectorOffset changeVectorOffset == false)
-                    throw new InvalidOperationException($"Can't compare {other.GetType()} with {GetType()}");
-
-                return (int)(Etag - changeVectorOffset.Etag);
-            }
-
-            private long? _etag;
-            public long Etag => _etag ??= long.Parse(EtagMatcher.Match(_changeVector).Groups[1].Value);
-
-            private static Regex EtagMatcher => new Regex(@"\w{1,4}:(\d+)-.{22}", RegexOptions.Compiled);
-            public override string ToString() => _changeVector;
-        }
     }
 }

@@ -1,9 +1,11 @@
 ﻿using System.Linq.Expressions;
+using System.Reflection;
 using Akka.Actor;
 using Akka.Configuration;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Session;
 using Raven.Client.Documents.Subscriptions;
+using Raven.Client.Http;
 
 namespace Akka.Persistence.RavenDB
 {
@@ -12,8 +14,7 @@ namespace Akka.Persistence.RavenDB
     {
         public JournalRavenDbPersistence(ExtendedActorSystem system) : base(system)
         {
-            var journalConfig = system.Settings.Config.GetConfig("akka.persistence.journal.ravendb");
-            Database = journalConfig.GetString("name") ?? throw new ArgumentException("name must be provided");
+           
         }
     }
 
@@ -21,8 +22,7 @@ namespace Akka.Persistence.RavenDB
     {
         public SnapshotRavenDbPersistence(ExtendedActorSystem system) : base(system)
         {
-            var snapshotConfig = system.Settings.Config.GetConfig("akka.persistence.snapshot-store.ravendb");
-            Database = snapshotConfig.GetString("name") ?? throw new ArgumentException("name must be provided");
+            
         }
     }
     public abstract class RavenDbPersistence : IExtension
@@ -32,11 +32,15 @@ namespace Akka.Persistence.RavenDB
 
         private static readonly TimeSpan? _timout = null;
         public string Database;
-
+        public static IList<string> Urls;
         protected RavenDbPersistence(ExtendedActorSystem system)
         {
             if (system == null)
                 throw new ArgumentNullException(nameof(system));
+
+            var journalConfig = system.Settings.Config.GetConfig("akka.persistence.journal.ravendb");
+            Database = journalConfig.GetString("name") ?? throw new ArgumentException("name must be provided");
+            Urls = journalConfig.GetStringList("urls") ?? throw new ArgumentException("urls must be provided");
         }
 
         public IAsyncDocumentSession OpenAsyncSession() => Instance.OpenAsyncSession(Database); 
@@ -45,10 +49,9 @@ namespace Akka.Persistence.RavenDB
         {
             var store = new DocumentStore
             {
-                Urls = new[] { "http://localhost:8080" }, 
-                // TODO add load balancing
+                Urls = Urls.ToArray(), 
             };
-
+            store.Conventions.LoadBalanceBehavior = LoadBalanceBehavior.UseSessionContext;
             store.Initialize();
 
             return store;
@@ -56,7 +59,7 @@ namespace Akka.Persistence.RavenDB
 
         public static Config DefaultConfiguration()
         {
-            return ConfigurationFactory.FromResource<RavenDbPersistence>("Akka.Persistence.RavenDb.reference.conf");
+            return ConfigurationFactory.FromResource<RavenDbPersistence>("Akka.Persistence.RavenDB.reference.conf");
         }
 
         public static CancellationTokenSource StopTokenSource = new CancellationTokenSource();

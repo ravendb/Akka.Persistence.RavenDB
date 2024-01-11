@@ -1,7 +1,9 @@
 ﻿using Akka.Actor;
+using Akka.Configuration;
 using Akka.Persistence.RavenDB;
 using Akka.Persistence.Snapshot;
 using Akka.Serialization;
+using Akka.Util;
 
 namespace Akka.Persistence.RavenDB.Snapshot
 {
@@ -21,9 +23,10 @@ namespace Akka.Persistence.RavenDB.Snapshot
             // TODO: add API to scan backwards
             using var session = _storage.OpenAsyncSession();
             using var cts = RavenDbPersistence.CancellationTokenSource;
+            session.Advanced.SessionInfo.SetContext(persistenceId);
 
-            var results = await session.Advanced.StreamAsync<SnapshotMetadata>(startsWith: GetSnapshotPrefix(persistenceId), startAfter: GetSnapshotId(persistenceId, criteria.MinSequenceNr - 1), token: cts.Token);
-            SnapshotMetadata lastValidSnapshot = null; // yuck!
+            await using var results = await session.Advanced.StreamAsync<Snapshot>(startsWith: GetSnapshotPrefix(persistenceId), startAfter: GetSnapshotId(persistenceId, criteria.MinSequenceNr - 1), token: cts.Token);
+            Snapshot lastValidSnapshot = null; // yuck!
             string lastValidSnapshotId = null;
             while (await results.MoveNextAsync()) 
             {
@@ -32,36 +35,53 @@ namespace Akka.Persistence.RavenDB.Snapshot
                 if (current.SequenceNr <= criteria.MaxSequenceNr && isBetween)
                 {
                     lastValidSnapshotId = results.Current.Id;
-                    lastValidSnapshot = current;
+                    lastValidSnapshot = results.Current.Document;
                 }
             }
 
             if (lastValidSnapshot == null)
-                // throw new InvalidOperationException($"no snapshot found for {persistenceId} and criteria {criteria}");
                 return null;
 
-            var snapshot = await session.Advanced.Attachments.GetAsync(lastValidSnapshotId, "snapshot", cts.Token);
-            var buffer = new byte[snapshot.Details.Size];
-            await using var source = snapshot.Stream;
-            await using var destination = new MemoryStream(buffer);
-            await source.CopyToAsync(destination, cts.Token);
+            var snapshotAttachment = await session.Advanced.Attachments.GetAsync(lastValidSnapshotId, "snapshot", cts.Token);
+            var buffer = new byte[snapshotAttachment.Details.Size];
+            using var source = snapshotAttachment.Stream;
+            using var destination = new MemoryStream(buffer);
+            await source.CopyToAsync(destination);
             
-            var serializer = _serialization.FindSerializerForType(typeof(Serialization.Snapshot));
-            var data = serializer.FromBinary<Serialization.Snapshot>(buffer).Data;
-            return new SelectedSnapshot(new SnapshotMetadata(lastValidSnapshot.PersistenceId, lastValidSnapshot.SequenceNr, lastValidSnapshot.Timestamp), data);
+            var snapshot = lastValidSnapshot.GetSnapshot(_serialization, buffer);
+            return new SelectedSnapshot(new SnapshotMetadata(lastValidSnapshot.PersistenceId, lastValidSnapshot.SequenceNr, lastValidSnapshot.Timestamp), snapshot);
         }
 
         protected override async Task SaveAsync(SnapshotMetadata metadata, object snapshot)
         {
             var id = GetSnapshotId(metadata);
-            var serializer = _serialization.FindSerializerForType(typeof(Serialization.Snapshot));
 
-            var bytes = serializer.ToBinary(new Serialization.Snapshot(snapshot));
+            var snapshotType = snapshot.GetType();
+            var serializer = _serialization.FindSerializerForType(snapshotType/*, _config.DefaultSerializer*/);
+            var bytes = Akka.Serialization.Serialization.WithTransport(
+                system: _serialization.System,
+                state: (serializer, snapshot),
+                action: state => state.serializer.ToBinary(state.snapshot));
+
+            var manifest = serializer switch
+            {
+                SerializerWithStringManifest stringManifest => stringManifest.Manifest(snapshot),
+                { IncludeManifest: true } => snapshotType.TypeQualifiedName(),
+                _ => string.Empty,
+            };
+
             using var stream = new MemoryStream(bytes);
 
             using var session = _storage.OpenAsyncSession();
             using var cts = RavenDbPersistence.CancellationTokenSource;
-            await session.StoreAsync(metadata, id, cts.Token);
+            await session.StoreAsync(new Snapshot
+            {
+                PersistenceId = metadata.PersistenceId,
+                SequenceNr = metadata.SequenceNr,
+                Timestamp = metadata.Timestamp,
+                Manifest = manifest,
+                SerializerId = serializer.Identifier,
+            }, id, cts.Token);
             session.Advanced.Attachments.Store(id, "snapshot", stream);
             await session.SaveChangesAsync(cts.Token);
         }
@@ -70,6 +90,7 @@ namespace Akka.Persistence.RavenDB.Snapshot
         {
             var id = GetSnapshotId(metadata);
             using var session = _storage.OpenAsyncSession();
+            session.Advanced.SessionInfo.SetContext(metadata.PersistenceId);
             using var cts = RavenDbPersistence.CancellationTokenSource;
             session.Delete(id);
             await session.SaveChangesAsync(cts.Token);
@@ -80,7 +101,9 @@ namespace Akka.Persistence.RavenDB.Snapshot
             //TODO delete by prefix (upto)
             using var session = _storage.OpenAsyncSession();
             using var cts = RavenDbPersistence.CancellationTokenSource;
-            var results = await session.Advanced.StreamAsync<SnapshotMetadata>(startsWith: GetSnapshotPrefix(persistenceId), startAfter: GetSnapshotId(persistenceId, criteria.MinSequenceNr - 1), token: cts.Token);
+            session.Advanced.SessionInfo.SetContext(persistenceId);
+
+            await using var results = await session.Advanced.StreamAsync<SnapshotMetadata>(startsWith: GetSnapshotPrefix(persistenceId), startAfter: GetSnapshotId(persistenceId, criteria.MinSequenceNr - 1), token: cts.Token);
             while (await results.MoveNextAsync())
             {
                 var current = results.Current.Document;
@@ -95,14 +118,44 @@ namespace Akka.Persistence.RavenDB.Snapshot
             await session.SaveChangesAsync(cts.Token);
         }
 
-        private string GetSnapshotPrefix(string persistenceId) => $"snapshot/{persistenceId}/";
+        private string GetSnapshotPrefix(string persistenceId) => $"Snapshots/{persistenceId}/";
         private string GetSnapshotId(SnapshotMetadata metadata) => GetSnapshotId(metadata.PersistenceId, metadata.SequenceNr);
         private string GetSnapshotId(string persistenceId, long sequenceNr)
         {
             if (sequenceNr < 0) 
                 sequenceNr = 0;
 
-            return $"snapshot/{persistenceId}/{sequenceNr.ToLeadingZerosFormat()}";
+            return $"Snapshots/{persistenceId}/{sequenceNr.ToLeadingZerosFormat()}";
+        }
+
+        public class Snapshot
+        {
+            public DateTime Timestamp;
+            public long SequenceNr;
+            public string PersistenceId;
+            public string Manifest;
+            public int? SerializerId;
+
+            public object GetSnapshot(Akka.Serialization.Serialization serialization, byte[] bytes)
+            {
+                if (SerializerId is null)
+                {
+                    var type = Type.GetType(Manifest, true);
+
+                    // TODO: hack. Replace when https://github.com/akkadotnet/akka.net/issues/3811
+                    return Akka.Serialization.Serialization.WithTransport(
+                        system: serialization.System,
+                        state: (
+                            // DefaultSerializer = config.GetString("serializer");
+                            serializer: serialization.FindSerializerForType(type/*, _config.DefaultSerializer*/),
+                            bytes,
+                            type),
+                        action: state => state.serializer.FromBinary(state.bytes, state.type));
+                }
+
+                var serializerId = SerializerId.Value;
+                return serialization.Deserialize(bytes, serializerId, Manifest);
+            }
         }
     }
 }

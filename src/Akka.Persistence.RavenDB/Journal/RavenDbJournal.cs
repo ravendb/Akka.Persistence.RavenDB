@@ -2,13 +2,13 @@
 using System.Collections.Immutable;
 using System.Diagnostics;
 using Akka.Actor;
-using Akka.Persistence.RavenDB;
-using Akka.Persistence.RavenDB.Query;
 using Akka.Persistence.Serialization;
-using Akka.Util;
 using Raven.Client.Documents.Commands.Batches;
 using Raven.Client.Documents.Operations;
-using Akka.Streams.Dsl;
+using Akka.Persistence.RavenDB.Journal.Types;
+using Nito.AsyncEx;
+using Raven.Client;
+using Raven.Client.Documents.Queries;
 
 namespace Akka.Persistence.RavenDB.Journal
 {
@@ -16,6 +16,9 @@ namespace Akka.Persistence.RavenDB.Journal
     {
         private readonly JournalRavenDbPersistence _storage = Context.System.WithExtension<JournalRavenDbPersistence, JournalRavenDbPersistenceProvider>();
         private readonly PersistenceMessageSerializer _serializer = new PersistenceMessageSerializer((ExtendedActorSystem)Context.System);
+
+        //requests for the highest sequence number may be made concurrently to writes executing for the same persistenceId.
+        private readonly AsyncReaderWriterLock _writeMessagesLock = new AsyncReaderWriterLock();
 
         public override async Task ReplayMessagesAsync(
             IActorContext context, 
@@ -26,40 +29,34 @@ namespace Akka.Persistence.RavenDB.Journal
             Action<IPersistentRepresentation> recoveryCallback)
         {
             using var session = _storage.OpenAsyncSession();
-
-            var results = await session.Advanced.StreamAsync<JournalEvent>(startsWith: GetEventPrefix(persistenceId), startAfter: GetSequenceId(persistenceId, fromSequenceNr - 1));
+            using var cts = RavenDbPersistence.CancellationTokenSource;
+            session.Advanced.SessionInfo.SetContext(persistenceId);
+            
+            await using var results = await session.Advanced.StreamAsync<Types.Event>(startsWith: GetEventPrefix(persistenceId), startAfter: GetSequenceId(persistenceId, fromSequenceNr - 1), token: cts.Token);
             while (max > 0 && await results.MoveNextAsync())
             {
                 var message = results.Current.Document;
                 if (message.SequenceNr > toSequenceNr)
-                    return;
+                    return; // TODO 
 
-                var persistent = JournalEvent.Deserialize(_serializer, message, context.Sender);
+                var persistent = Types.Event.Deserialize(_serializer, message, context.Sender);
                 recoveryCallback(persistent);
                 max--;
             }
         }
 
+
         public override async Task<long> ReadHighestSequenceNrAsync(string persistenceId, long fromSequenceNr)
         {
-            //TODO backward by prefix
-            using var session = _storage.OpenAsyncSession();
-            var max = -1L;
-            var results = await session.Advanced.StreamAsync<JournalEvent>(startsWith: GetEventPrefix(persistenceId), startAfter: GetSequenceId(persistenceId, fromSequenceNr - 1));
-            while (await results.MoveNextAsync())
+            using (await _writeMessagesLock.WriterLockAsync())
             {
-                var message = results.Current.Document;
-                max = Math.Max(max, message.SequenceNr);
-            }
+                using var session = _storage.OpenAsyncSession();
+                using var cts = RavenDbPersistence.CancellationTokenSource;
+                session.Advanced.SessionInfo.SetContext(persistenceId);
 
-            if (max == -1L) // no journal found
-            {
-                var metadataId = GetMetadataId(persistenceId);
-                var metadata = await session.LoadAsync<JournalMetadata>(metadataId);
-                max = metadata?.MaxSequenceNr ?? 0;
+                var metadata = await session.LoadAsync<Metadata>(GetMetadataId(persistenceId), cts.Token);
+                return metadata?.MaxSequenceNr ?? 0;
             }
-
-            return max;
         }
 
         protected override async Task<IImmutableList<Exception?>> WriteMessagesAsync(IEnumerable<AtomicWrite> messages)
@@ -68,26 +65,23 @@ namespace Akka.Persistence.RavenDB.Journal
             using var cts = RavenDbPersistence.CancellationTokenSource;
             var tasks = new List<Task>();
 
-            foreach (var atomicWrite in messages)
+            using (await _writeMessagesLock.ReaderLockAsync(cts.Token))
             {
-                var t = WriteAtomic(atomicWrite, cts);
-                tasks.Add(t);
-            }
+                foreach (var atomicWrite in messages)
+                {
+                    var t = WriteAtomic(atomicWrite, cts);
+                    tasks.Add(t);
+                }
 
-            await Task.WhenAll(tasks);
+                await Task.WhenAll(tasks);
+            }
 
             foreach (var task in tasks)
             {
                 try
                 {
-                    if (task.IsCompletedSuccessfully)
-                    {
-                        builder.Add(null);
-                        continue;
-                    }
-
-                    await task; // unwrap the exception
-                    Debug.Assert(false, "Task supposed to be faulted, but it isn't.");
+                    await task; // unwrap the exception if needed
+                    builder.Add(null);
                 }
                 catch (Exception e)
                 {
@@ -98,182 +92,66 @@ namespace Akka.Persistence.RavenDB.Journal
             return builder.ToImmutable();
         }
 
-        private async Task WriteAtomic(AtomicWrite atomicWrite, CancellationTokenSource cts)
-        {
-            var payload = (IImmutableList<IPersistentRepresentation>)atomicWrite.Payload;
-            using var session = _storage.OpenAsyncSession();
-
-            foreach (var representation in payload)
-            {
-                var id = GetSequenceId(representation.PersistenceId, representation.SequenceNr);
-                var journalEvent = JournalEvent.Serialize(_serializer, representation);
-                await session.StoreAsync(journalEvent, id, cts.Token);
-            }
-
-            var metadataId = GetMetadataId(atomicWrite.PersistenceId);
-            session.Advanced.Defer(new PatchCommandData(metadataId, changeVector: null, patch: new PatchRequest
-            {
-                Script = JournalMetadata.UpdateScript,
-                Values = new Dictionary<string, object>
-                {
-                    [nameof(JournalMetadata.MaxSequenceNr)] = atomicWrite.HighestSequenceNr,
-                }
-            }, new PatchRequest
-            {
-                Script = JournalMetadata.CreateNewScript,
-                Values = new Dictionary<string, object>
-                {
-                    [nameof(JournalMetadata.PersistenceId)] = atomicWrite.PersistenceId,
-                    [nameof(JournalMetadata.MaxSequenceNr)] = atomicWrite.HighestSequenceNr,
-                    ["collection"] = RavenDbPersistence.Instance.Conventions.FindCollectionName(typeof(JournalMetadata)),
-                    ["type"] = RavenDbPersistence.Instance.Conventions.FindClrTypeName(typeof(JournalMetadata)),
-                    ["collection2"] = RavenDbPersistence.Instance.Conventions.FindCollectionName(typeof(UniqueActor)),
-                    ["type2"] = RavenDbPersistence.Instance.Conventions.FindClrTypeName(typeof(UniqueActor))
-                }
-            }));
-
-            await session.SaveChangesAsync(cts.Token);
-        }
-
         protected override async Task DeleteMessagesToAsync(string persistenceId, long toSequenceNr)
         {
-            //TODO delete by prefix (upto)
-            using var session = _storage.OpenAsyncSession();
+            // TODO batch this ?
             using var cts = RavenDbPersistence.CancellationTokenSource;
-            var results = await session.Advanced.StreamAsync<JournalEvent>(startsWith: GetEventPrefix(persistenceId), token: cts.Token);
-            var maxDeleted = 0L;
+            using var session = _storage.OpenAsyncSession();
+            await using var results = await session.Advanced.StreamAsync<Types.Event>(startsWith: GetEventPrefix(persistenceId), token: cts.Token);
             while (await results.MoveNextAsync())
             {
                 var current = results.Current.Document;
                 if (current.SequenceNr > toSequenceNr)
                     break;
 
-                maxDeleted = Math.Max(maxDeleted, current.SequenceNr);
-                session.Delete(results.Current.Id);
+                session.Delete(current.Id);
             }
 
             await session.SaveChangesAsync(cts.Token);
-
         }
 
-        public class JournalMetadata
+        private async Task WriteAtomic(AtomicWrite atomicWrite, CancellationTokenSource cts)
         {
-            public string Id;
-            public string PersistenceId;
-            public long MaxSequenceNr;
-            
-            public static string CreateNewScript = 
-@$"
-this['{Raven.Client.Constants.Documents.Metadata.Key}'] = {{}};
-this['{Raven.Client.Constants.Documents.Metadata.Key}']['{Raven.Client.Constants.Documents.Metadata.Collection}'] = args.collection;
-this['{Raven.Client.Constants.Documents.Metadata.Key}']['{Raven.Client.Constants.Documents.Metadata.RavenClrType}'] = args.type;
-this['{nameof(MaxSequenceNr)}'] = args.{nameof(MaxSequenceNr)};
-this['{nameof(PersistenceId)}'] = args.{nameof(PersistenceId)};
+            var payload = (IImmutableList<IPersistentRepresentation>)atomicWrite.Payload;
+            using var session = _storage.OpenAsyncSession();
+            session.Advanced.SessionInfo.SetContext(atomicWrite.PersistenceId);
 
-let uid = 'UniqueActors/' + args.{nameof(PersistenceId)}; 
-if(load(uid) == null)
-put(uid,
-{{ {nameof(UniqueActor.PersistenceId)} : args.{nameof(PersistenceId)}, 
-    '{Raven.Client.Constants.Documents.Metadata.Key}' : {{ 
-        '{Raven.Client.Constants.Documents.Metadata.Collection}' : args.collection2,
-        '{Raven.Client.Constants.Documents.Metadata.RavenClrType}' : args.type2
-    }} 
-}});
-";
-
-            public static string UpdateScript = 
-@$"
-var x = this['{nameof(MaxSequenceNr)}'];
-this['{nameof(MaxSequenceNr)}'] = Math.max(x, args.{nameof(MaxSequenceNr)});
-";
-        }
-
-        public class UniqueActor
-        {
-            public string PersistenceId;
-        }
-
-        public class JournalEvent
-        {
-            public string Id;
-            public string PersistenceId;
-            public long SequenceNr;
-            public string Payload; // base64
-            public string PayloadType;
-            public long Timestamp;
-            public string WriterGuid;
-            public bool IsDeleted;
-            public string Manifest;
-            public string[] Tags;
-
-            public static JournalEvent Serialize(PersistenceMessageSerializer serialization, IPersistentRepresentation message)
+            foreach (var representation in payload)
             {
-                message = new EventSerializeModifications(message).Get(out var tags);
-
-                var payloadType = message.GetType().TypeQualifiedName();
-                var payload = serialization.ToBinary(message); // TODO figure out how to deserialize only the payload and not the entire message
-
-                return new JournalEvent
-                {
-                    PersistenceId = message.PersistenceId,
-                    Timestamp = message.Timestamp,
-                    SequenceNr = message.SequenceNr,
-                    WriterGuid = message.WriterGuid,
-                    IsDeleted = message.IsDeleted,
-                    Manifest = message.Manifest,
-                    Payload = Convert.ToBase64String(payload),
-                    PayloadType = payloadType,
-                    Tags = tags
-                };
+                var id = GetSequenceId(representation.PersistenceId, representation.SequenceNr);
+                var journalEvent = Types.Event.Serialize(_serializer, representation);
+                // events are immutable and should always be new 
+                await session.StoreAsync(journalEvent, changeVector: string.Empty, id, cts.Token);
             }
 
-            public static Persistent Deserialize(PersistenceMessageSerializer serialization, JournalEvent journalEvent, IActorRef sender)
+            var metadataId = GetMetadataId(atomicWrite.PersistenceId);
+            session.Advanced.Defer(new PatchCommandData(metadataId, changeVector: null, patch: new PatchRequest
             {
-                var type = Type.GetType(journalEvent.PayloadType);
-                var payloadBytes = Convert.FromBase64String(journalEvent.Payload);
-                return serialization.FromBinary<Persistent>(payloadBytes);
-            }
-
-            private struct EventSerializeModifications
-            {
-                private IPersistentRepresentation _message;
-                private readonly bool _nullifySender;
-                private readonly bool _addTimestamp;
-                private readonly bool _tagged;
-
-                public EventSerializeModifications(IPersistentRepresentation message)
+                Script = Metadata.UpdateScript, // TODO : add conflict resolution to prefer the max
+                Values = new Dictionary<string, object>
                 {
-                    _message = message;
-                    _nullifySender = message.Sender != null;
-                    _addTimestamp = message.Timestamp == 0;
-                    _tagged = message.Payload is Tagged;
+                    [nameof(Metadata.MaxSequenceNr)] = atomicWrite.HighestSequenceNr,
                 }
-
-                public IPersistentRepresentation Get(out string[]? tags)
+            }, new PatchRequest
+            {
+                Script = Metadata.CreateNewScript,
+                Values = new Dictionary<string, object>
                 {
-                    tags = null;
-
-                    if (_nullifySender)
-                        _message =  _message.Update(_message.SequenceNr, _message.PersistenceId, _message.IsDeleted, ActorRefs.NoSender, _message.WriterGuid);
-
-                    if (_addTimestamp)
-                        _message = _message.WithTimestamp(DateTime.UtcNow.Ticks);
-
-                    if (_tagged)
-                    {
-                        var tagged = (Tagged)_message.Payload;
-                        tags = tagged.Tags.ToArray();
-                        _message = _message.WithPayload(tagged.Payload);
-                    }
-
-                    return _message;
+                    [nameof(Metadata.PersistenceId)] = atomicWrite.PersistenceId,
+                    [nameof(Metadata.MaxSequenceNr)] = atomicWrite.HighestSequenceNr,
+                    ["collection"] = EventsMetadataCollection,
+                    ["type"] = RavenDbPersistence.Instance.Conventions.FindClrTypeName(typeof(Metadata)),
+                    ["collection2"] = RavenDbPersistence.Instance.Conventions.FindCollectionName(typeof(ActorId)),
+                    ["type2"] = RavenDbPersistence.Instance.Conventions.FindClrTypeName(typeof(ActorId))
                 }
-            }
+            }));
+
+            await session.SaveChangesAsync(cts.Token);
         }
 
-        private static string GetMetadataId(string persistenceId) => $"EventsMetadata/{persistenceId}";
+        private static string GetMetadataId(string persistenceId) => $"{EventsMetadataCollection}/{persistenceId}";
 
-        public static string GetEventPrefix(string persistenceId) => $"Events/{persistenceId}/";
+        public static string GetEventPrefix(string persistenceId) => $"{EventsCollection}/{persistenceId}/";
 
         public static string GetSequenceId(string persistenceId, long sequenceNr)
         {
@@ -282,5 +160,18 @@ this['{nameof(MaxSequenceNr)}'] = Math.max(x, args.{nameof(MaxSequenceNr)});
 
             return $"{GetEventPrefix(persistenceId)}{sequenceNr.ToLeadingZerosFormat()}";
         }
+
+        private static string EventsCollection = RavenDbPersistence.Instance.Conventions.FindCollectionName(typeof(Types.Event));
+        private static string EventsMetadataCollection = RavenDbPersistence.Instance.Conventions.FindCollectionName(typeof(Metadata));
+        private static string DeletionScript = 
+            $@"
+from {EventsCollection} where startsWith(id(), $prefix) 
+update {{
+    if (this.SequenceNr > $toSequenceNr)
+        return; // need to stop the patch
+    
+    del(id(this));
+}}
+";
     }
 }
