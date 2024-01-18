@@ -4,4 +4,5 @@
 public class ActorId
 {
     public string PersistenceId;
+    public DateTime CreatedAt;
 }

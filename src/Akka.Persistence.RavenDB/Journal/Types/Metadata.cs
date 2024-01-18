@@ -6,6 +6,7 @@
         public string Id;
         public string PersistenceId;
         public long MaxSequenceNr;
+        public DateTime CreatedAt;
 
         public static string CreateNewScript =
             @$"
@@ -14,11 +15,13 @@ this['{Raven.Client.Constants.Documents.Metadata.Key}']['{Raven.Client.Constants
 this['{Raven.Client.Constants.Documents.Metadata.Key}']['{Raven.Client.Constants.Documents.Metadata.RavenClrType}'] = args.type;
 this['{nameof(MaxSequenceNr)}'] = args.{nameof(MaxSequenceNr)};
 this['{nameof(PersistenceId)}'] = args.{nameof(PersistenceId)};
+this['{nameof(CreatedAt)}'] = new Date().toISOString();
 
 let uid = 'UniqueActors/' + args.{nameof(PersistenceId)}; 
 if(load(uid) == null)
 put(uid,
 {{ {nameof(ActorId.PersistenceId)} : args.{nameof(PersistenceId)}, 
+   {nameof(ActorId.CreatedAt)} : new Date().toISOString(), 
     '{Raven.Client.Constants.Documents.Metadata.Key}' : {{ 
         '{Raven.Client.Constants.Documents.Metadata.Collection}' : args.collection2,
         '{Raven.Client.Constants.Documents.Metadata.RavenClrType}' : args.type2
@@ -29,6 +32,9 @@ put(uid,
         public static string UpdateScript =
             @$"
 var x = this['{nameof(MaxSequenceNr)}'];
+if (x != args.check)
+  throw new Error('Concurrency check failed. expected ' + args.check + ', but got ' + x);
+
 this['{nameof(MaxSequenceNr)}'] = Math.max(x, args.{nameof(MaxSequenceNr)});
 ";
     }

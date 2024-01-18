@@ -2,6 +2,7 @@
 using System.Reflection;
 using Akka.Actor;
 using Akka.Configuration;
+using Akka.Persistence.RavenDB.Journal;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Session;
 using Raven.Client.Documents.Subscriptions;
@@ -33,6 +34,9 @@ namespace Akka.Persistence.RavenDB
         private static readonly TimeSpan? _timout = null;
         public string Database;
         public static IList<string> Urls;
+
+        public readonly Akka.Serialization.Serialization Serialization;
+
         protected RavenDbPersistence(ExtendedActorSystem system)
         {
             if (system == null)
@@ -41,6 +45,7 @@ namespace Akka.Persistence.RavenDB
             var journalConfig = system.Settings.Config.GetConfig("akka.persistence.journal.ravendb");
             Database = journalConfig.GetString("name") ?? throw new ArgumentException("name must be provided");
             Urls = journalConfig.GetStringList("urls") ?? throw new ArgumentException("urls must be provided");
+            Serialization = system.Serialization;
         }
 
         public IAsyncDocumentSession OpenAsyncSession() => Instance.OpenAsyncSession(Database); 

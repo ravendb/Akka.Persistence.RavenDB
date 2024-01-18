@@ -1,4 +1,6 @@
-﻿using Akka.Actor;
+﻿using System.Text;
+using Akka.Actor;
+using Akka.IO;
 using Akka.Persistence.Journal;
 using Akka.Persistence.Serialization;
 using Akka.Util;
@@ -10,40 +12,60 @@ namespace Akka.Persistence.RavenDB.Journal.Types
         public string Id;
         public string PersistenceId;
         public long SequenceNr;
-        public string Payload; // base64
-        public string PayloadType;
+        public object Payload; // base64
+        public int SerializationId;
         public long Timestamp;
         public string WriterGuid;
         public bool IsDeleted;
         public string Manifest;
         public string[] Tags;
 
-        public static Event Serialize(PersistenceMessageSerializer serialization, IPersistentRepresentation message)
+        public enum Serialization
         {
-            message = new EventSerializeModifications(message).Get(out var tags);
+            Default,
+            Embedded
+        }
 
-            var payloadType = message.GetType().TypeQualifiedName();
-            var payload = serialization.ToBinary(message); // TODO figure out how to deserialize only the payload and not the entire message
-
-            return new Event
+        public static Event Serialize(Akka.Serialization.Serialization serialization, IPersistentRepresentation message)
+        {
+            var e = new Event
             {
                 PersistenceId = message.PersistenceId,
-                Timestamp = message.Timestamp,
                 SequenceNr = message.SequenceNr,
                 WriterGuid = message.WriterGuid,
                 IsDeleted = message.IsDeleted,
                 Manifest = message.Manifest,
-                Payload = Convert.ToBase64String(payload),
-                PayloadType = payloadType,
-                Tags = tags
+                Payload = message.Payload,
             };
+
+            message = new EventSerializeModifications(message).Get(out var tags);
+            e.Tags = tags;
+            e.Timestamp = message.Timestamp;
+
+            var serializer = serialization.FindSerializerFor(message.Payload);
+
+            if (serializer.Identifier == 1) // inject our own serializer instead
+            {
+                e.Payload = message.Payload;
+                e.SerializationId = 1;
+            }
+            else
+            {
+                e.Payload = serialization.Serialize(message);
+                e.SerializationId = serialization.FindSerializerFor(message).Identifier;
+            }
+
+            return e;
         }
 
-        public static Persistent Deserialize(PersistenceMessageSerializer serialization, Event @event, IActorRef sender)
+        public static Persistent Deserialize(Akka.Serialization.Serialization serialization, Event @event, IActorRef sender)
         {
-            var type = Type.GetType(@event.PayloadType);
-            var payloadBytes = Convert.FromBase64String(@event.Payload);
-            return serialization.FromBinary<Persistent>(payloadBytes);
+            if (@event.SerializationId == 1)
+                return new Persistent(@event.Payload, @event.SequenceNr, @event.PersistenceId, @event.Manifest, @event.IsDeleted, sender, @event.WriterGuid,
+                    @event.Timestamp);
+
+            var r = (Persistent)serialization.Deserialize((byte[])@event.Payload, @event.SerializationId, @event.Manifest);
+            return r;
         }
 
         private struct EventSerializeModifications
