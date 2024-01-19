@@ -10,12 +10,11 @@ using Akka.Persistence.RavenDB.Query.ContinuousQuery;
 using Akka.Persistence.Serialization;
 using Nito.AsyncEx;
 using Raven.Client.Documents.Linq;
-using Raven.Client.Documents.Session;
 using Raven.Client.Documents.Subscriptions;
 
 namespace Akka.Persistence.RavenDB.Query
 {
-    public class RavenDbReadJournal :
+    public partial class RavenDbReadJournal :
         IPersistenceIdsQuery,
         ICurrentPersistenceIdsQuery,
         IEventsByPersistenceIdQuery,
@@ -33,8 +32,9 @@ namespace Akka.Persistence.RavenDB.Query
         private readonly string _writeJournalPluginId;
         private readonly int _maxBufferSize;
         private readonly ExtendedActorSystem _system;
-        private readonly JournalRavenDbPersistence _ravendb;
+        public readonly JournalRavenDbPersistence Storage;
         private readonly Akka.Serialization.Serialization _serialization;
+        public readonly TimeSpan RefreshInterval;
 
         public RavenDbReadJournal(ExtendedActorSystem system, Config config)
         {
@@ -46,19 +46,21 @@ namespace Akka.Persistence.RavenDB.Query
             _system = system;
             _serialization = system.Serialization;
             
-            _ravendb = system.WithExtension<JournalRavenDbPersistence, JournalRavenDbPersistenceProvider>();
+            Storage = system.WithExtension<JournalRavenDbPersistence, JournalRavenDbPersistenceProvider>();
+            RefreshInterval = config.GetTimeSpan("refresh-interval", @default: TimeSpan.FromSeconds(5));
+            Storage.WaitForNonStale = config.GetBoolean("wait-for-non-stale");
         }
 
         public void PreStart()
         {
-            new EventsByTagAndChangeVector().Execute(RavenDbPersistence.Instance, database: _ravendb.Database);
-            new ActorsByChangeVector().Execute(RavenDbPersistence.Instance, database: _ravendb.Database);
+            new EventsByTagAndChangeVector().Execute(RavenDbPersistence.Instance, database: Storage.Database);
+            new ActorsByChangeVector().Execute(RavenDbPersistence.Instance, database: Storage.Database);
         }
 
         public Source<string, NotUsed> PersistenceIds()
         {
             var channel = Channel.CreateBounded<string>(_maxBufferSize);
-            var q = new PersistenceIds(_ravendb, channel);
+            var q = new PersistenceIds(this, channel);
             Task.Run(q.Run);
 
             return Source.ChannelReader(channel.Reader);
@@ -71,7 +73,7 @@ namespace Akka.Persistence.RavenDB.Query
             {
                 try
                 {
-                    using var session = _ravendb.OpenAsyncSession();
+                    using var session = Storage.OpenAsyncSession();
                     await using var results = await session.Advanced.StreamAsync(session.Query<ActorId>());
                     while (await results.MoveNextAsync())
                     {
@@ -93,7 +95,7 @@ namespace Akka.Persistence.RavenDB.Query
         public Source<EventEnvelope, NotUsed> EventsByPersistenceId(string persistenceId, long fromSequenceNr, long toSequenceNr)
         {
             var channel = Channel.CreateBounded<EventEnvelope>(_maxBufferSize);
-            var q = new EventsByPersistenceId(persistenceId, fromSequenceNr, toSequenceNr, channel, _ravendb);
+            var q = new EventsByPersistenceId(persistenceId, fromSequenceNr, toSequenceNr, channel, this);
             Task.Run(q.Run);
 
             return Source.ChannelReader(channel.Reader);
@@ -106,7 +108,7 @@ namespace Akka.Persistence.RavenDB.Query
             {
                 try
                 {
-                    using var session = _ravendb.OpenAsyncSession();
+                    using var session = Storage.OpenAsyncSession();
                     session.Advanced.SessionInfo.SetContext(persistenceId);
 
                     await using var results = await session.Advanced.StreamAsync<Journal.Types.Event>(startsWith: RavenDbJournal.GetEventPrefix(persistenceId), startAfter: RavenDbJournal.GetSequenceId(persistenceId, fromSequenceNr - 1));
@@ -135,7 +137,7 @@ namespace Akka.Persistence.RavenDB.Query
         public Source<EventEnvelope, NotUsed> EventsByTag(string tag, Offset offset)
         {
             var channel = Channel.CreateBounded<EventEnvelope>(_maxBufferSize);
-            var q = new EventsByTag(tag, Offset(offset), _ravendb, channel);
+            var q = new EventsByTag(tag, Offset(offset), this, channel);
             Task.Run(q.Run);
 
             return Source.ChannelReader(channel.Reader);
@@ -148,7 +150,7 @@ namespace Akka.Persistence.RavenDB.Query
             {
                 try
                 {
-                    using var session = _ravendb.OpenAsyncSession();
+                    using var session = Storage.OpenAsyncSession();
                     session.Advanced.SessionInfo.SetContext(tag);
 
                     var q = session.Advanced.AsyncDocumentQuery<Journal.Types.Event>(nameof(EventsByTagAndChangeVector)).ContainsAny(e => e.Tags, new[] { tag });
@@ -177,7 +179,7 @@ namespace Akka.Persistence.RavenDB.Query
         public Source<EventEnvelope, NotUsed> AllEvents(Offset offset)
         {
             var channel = Channel.CreateBounded<EventEnvelope>(_maxBufferSize);
-            var q = new AllEvents(Offset(offset), _ravendb, channel);
+            var q = new AllEvents(this, channel, Offset(offset));
             Task.Run(q.Run);
 
             return Source.ChannelReader(channel.Reader);
@@ -190,7 +192,7 @@ namespace Akka.Persistence.RavenDB.Query
             {
                 try
                 {
-                    using var session = _ravendb.OpenAsyncSession();
+                    using var session = Storage.OpenAsyncSession();
                     var q = session.Advanced.AsyncDocumentQuery<Journal.Types.Event>(indexName: nameof(EventsByTagAndChangeVector));
                     q = Offset(offset).ApplyOffset(q);
 
@@ -223,59 +225,5 @@ namespace Akka.Persistence.RavenDB.Query
                 ChangeVectorOffset cv => cv,
                 _ => throw new ArgumentException($"ReadJournal does not support {offset.GetType().Name} offsets")
             };
-
-        public class ChangeVectorOffset : Offset
-        {
-            public static string Code = File.ReadAllText(@"C:\Work\Akka.Persistence.RavenDB\src\Akka.Persistence.RavenDB\ChangeVectorAnalyzer.cs");
-
-            public string ChangeVector;
-            public List<ChangeVectorAnalyzer.ChangeVectorElement> Elements;
-            public ChangeVectorOffset(string changeVector)
-            {
-                ChangeVector = changeVector;
-                Elements = ChangeVectorAnalyzer.ToList(changeVector);
-            }
-            public override int CompareTo(Offset other)
-            {
-                throw new NotSupportedException("you can't directly compare 2 change vector");
-            }
-
-            public ChangeVectorOffset Clone()
-            {
-                return new ChangeVectorOffset(ChangeVector);
-            }
-
-            public override string ToString() => ChangeVector;
-
-            public IAsyncDocumentQuery<T> ApplyOffset<T>(IAsyncDocumentQuery<T> q)
-            {
-                for (var index = 0; index < Elements.Count; index++)
-                {
-                    if (index == 0)
-                    {
-                        q = q.AndAlso().OpenSubclause();
-                    }
-                    else
-                    {
-                        q = q.OrElse();
-                    }
-
-                    var element = Elements[index];
-                    q.WhereGreaterThan(element.DatabaseId, element.Etag);
-
-                    if (index == Elements.Count - 1)
-                    {
-                        q = q.CloseSubclause();
-                    }
-                }
-
-                foreach (var changeVectorElement in Elements)
-                {
-                    q = q.OrderBy(changeVectorElement.DatabaseId);
-                }
-
-                return q;
-            }
-        }
     }
 }

@@ -99,7 +99,6 @@ namespace Akka.Persistence.RavenDB.Journal
             using var _ = await GetLocker(persistenceId).ReaderLockAsync(cts.Token);
             using var session = _storage.OpenAsyncSession();
             session.Advanced.SessionInfo.SetContext(persistenceId);
-            
             var highest = long.MinValue;
             var lowest = long.MaxValue;
 
@@ -142,7 +141,9 @@ namespace Akka.Persistence.RavenDB.Journal
                 }
             }));
 
-            // session.Advanced.WaitForIndexesAfterSaveChanges(); // TODO uncomment to make the query test pass
+            if (_storage.WaitForNonStale) // used for tests
+                session.Advanced.WaitForIndexesAfterSaveChanges();
+            
             await session.SaveChangesAsync(cts.Token);
         }
 

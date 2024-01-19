@@ -7,11 +7,11 @@ namespace Akka.Persistence.RavenDB.Query.ContinuousQuery;
 
 public class PersistenceIds : ContinuousQuery<IndexChange, string>
 {
-    private RavenDbReadJournal.ChangeVectorOffset _offset;
+    private ChangeVectorOffset _offset;
 
-    public PersistenceIds(JournalRavenDbPersistence ravendb, Channel<string> channel) : base(ravendb, channel)
+    public PersistenceIds(RavenDbReadJournal ravendb, Channel<string> channel) : base(ravendb, channel)
     {
-        _offset = new RavenDbReadJournal.ChangeVectorOffset(string.Empty);
+        _offset = new ChangeVectorOffset(string.Empty);
     }
 
     protected override IChangesObservable<IndexChange> Subscribe(IDatabaseChanges changes)
@@ -21,7 +21,7 @@ public class PersistenceIds : ContinuousQuery<IndexChange, string>
 
     protected override async Task Query()
     {
-        using var session = Ravendb.OpenAsyncSession();
+        using var session = Ravendb.Storage.OpenAsyncSession();
         var q = session.Advanced.AsyncDocumentQuery<ActorId>(indexName: nameof(ActorsByChangeVector));
         q = _offset.ApplyOffset(q);
 
@@ -30,7 +30,7 @@ public class PersistenceIds : ContinuousQuery<IndexChange, string>
         {
             var id = results.Current.Document.PersistenceId;
             await Channel.Writer.WriteAsync(id);
-            _offset = new RavenDbReadJournal.ChangeVectorOffset(results.Current.ChangeVector);
+            _offset = new ChangeVectorOffset(results.Current.ChangeVector);
         }
     }
 }

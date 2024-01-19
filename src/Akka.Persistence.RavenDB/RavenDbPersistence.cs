@@ -34,6 +34,7 @@ namespace Akka.Persistence.RavenDB
         private static readonly TimeSpan? _timout = null;
         public string Database;
         public static IList<string> Urls;
+        public bool WaitForNonStale { get; set; }
 
         public readonly Akka.Serialization.Serialization Serialization;
 
@@ -47,6 +48,7 @@ namespace Akka.Persistence.RavenDB
             Urls = journalConfig.GetStringList("urls") ?? throw new ArgumentException("urls must be provided");
             Serialization = system.Serialization;
         }
+
 
         public IAsyncDocumentSession OpenAsyncSession() => Instance.OpenAsyncSession(Database); 
 

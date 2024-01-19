@@ -73,6 +73,7 @@ namespace Akka.Persistence.RavenDB.Tests
                                         ravendb {
                                             class = "Akka.Persistence.RavenDB.Query.RavenDbReadJournalProvider, Akka.Persistence.RavenDB"
                                             refresh-interval = 1s
+                                            wait-for-non-stale = true
                                         }
                                     }
                                 }

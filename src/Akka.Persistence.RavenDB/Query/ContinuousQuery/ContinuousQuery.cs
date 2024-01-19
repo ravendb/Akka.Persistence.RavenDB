@@ -7,10 +7,10 @@ namespace Akka.Persistence.RavenDB.Query.ContinuousQuery;
 
 public abstract class ContinuousQuery<TChange, TInput> where TChange : DatabaseChange
 {
-    protected readonly JournalRavenDbPersistence Ravendb;
+    protected readonly RavenDbReadJournal Ravendb;
     protected readonly Channel<TInput> Channel;
 
-    protected ContinuousQuery(JournalRavenDbPersistence ravendb, Channel<TInput> channel)
+    protected ContinuousQuery(RavenDbReadJournal ravendb, Channel<TInput> channel)
     {
         Ravendb = ravendb;
         Channel = channel;
@@ -26,7 +26,7 @@ public abstract class ContinuousQuery<TChange, TInput> where TChange : DatabaseC
         try
         {
             var mre = new AsyncManualResetEvent(false);
-            using var changes = await RavenDbPersistence.Instance.Changes(Ravendb.Database).EnsureConnectedNow();
+            using var changes = await RavenDbPersistence.Instance.Changes(Ravendb.Storage.Database).EnsureConnectedNow();
             var observable = Subscribe(changes);
             await observable.EnsureSubscribedNow();
             using var sub = observable.Subscribe(x => mre.Set()); // TODO on error need to reconnect
@@ -37,7 +37,6 @@ public abstract class ContinuousQuery<TChange, TInput> where TChange : DatabaseC
 
                 await Query();
 
-                //await Task.Delay(TimeSpan.FromSeconds(1));
                 await mre.WaitAsync();
             }
         }
@@ -50,7 +49,7 @@ public abstract class ContinuousQuery<TChange, TInput> where TChange : DatabaseC
 
 public abstract class ContinuousQuery<TChange> : ContinuousQuery<TChange, EventEnvelope> where TChange : DatabaseChange
 {
-    protected ContinuousQuery(JournalRavenDbPersistence ravendb, Channel<EventEnvelope> channel) : base(ravendb, channel)
+    protected ContinuousQuery(RavenDbReadJournal ravendb, Channel<EventEnvelope> channel) : base(ravendb, channel)
     {
     }
 }

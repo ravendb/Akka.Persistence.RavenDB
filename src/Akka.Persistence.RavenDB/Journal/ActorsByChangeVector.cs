@@ -1,7 +1,7 @@
 ﻿using Akka.Persistence.RavenDB.Journal.Types;
+using Akka.Persistence.RavenDB.Query;
 using Raven.Client;
 using Raven.Client.Documents.Indexes;
-using static Akka.Persistence.RavenDB.Query.RavenDbReadJournal;
 
 namespace Akka.Persistence.RavenDB.Journal;
 
