@@ -3,16 +3,16 @@ using Akka.Persistence.Journal;
 using System.Collections.Immutable;
 using System.Diagnostics;
 using Akka.Actor;
+using Akka.Persistence.RavenDb.Journal.Types;
 using Akka.Persistence.Serialization;
 using Raven.Client.Documents.Commands.Batches;
 using Raven.Client.Documents.Operations;
-using Akka.Persistence.RavenDB.Journal.Types;
 using Nito.AsyncEx;
 using Raven.Client;
 using Raven.Client.Documents.Queries;
-using Akka.Persistence.RavenDB.Query.ContinuousQuery;
+using Akka.Persistence.RavenDb.Query.ContinuousQuery;
 
-namespace Akka.Persistence.RavenDB.Journal
+namespace Akka.Persistence.RavenDb.Journal
 {
     public class RavenDbJournal : AsyncWriteJournal
     {

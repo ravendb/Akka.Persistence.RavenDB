@@ -3,7 +3,7 @@ using Akka.Persistence.Query;
 using Nito.AsyncEx;
 using Raven.Client.Documents.Changes;
 
-namespace Akka.Persistence.RavenDB.Query.ContinuousQuery;
+namespace Akka.Persistence.RavenDb.Query.ContinuousQuery;
 
 public abstract class ContinuousQuery<TChange, TInput> where TChange : DatabaseChange
 {

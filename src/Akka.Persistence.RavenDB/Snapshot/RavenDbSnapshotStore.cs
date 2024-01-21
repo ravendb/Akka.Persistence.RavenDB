@@ -1,11 +1,11 @@
 ﻿using Akka.Actor;
 using Akka.Configuration;
-using Akka.Persistence.RavenDB;
+using Akka.Persistence.RavenDb;
 using Akka.Persistence.Snapshot;
 using Akka.Serialization;
 using Akka.Util;
 
-namespace Akka.Persistence.RavenDB.Snapshot
+namespace Akka.Persistence.RavenDb.Snapshot
 {
     public class RavenDbSnapshotStore : SnapshotStore
     {

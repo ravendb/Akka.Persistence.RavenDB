@@ -1,7 +1,7 @@
 using Akka.Persistence.Query;
 using Raven.Client.Documents.Session;
 
-namespace Akka.Persistence.RavenDB.Query;
+namespace Akka.Persistence.RavenDb.Query;
 
 public class ChangeVectorOffset : Offset
 {

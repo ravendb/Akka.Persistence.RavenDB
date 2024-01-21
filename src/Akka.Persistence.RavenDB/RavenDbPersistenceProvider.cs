@@ -1,7 +1,7 @@
 ﻿using Akka.Actor;
-using Akka.Persistence.RavenDB;
+using Akka.Persistence.RavenDb;
 
-namespace Akka.Persistence.RavenDB
+namespace Akka.Persistence.RavenDb
 {
     public class JournalRavenDbPersistenceProvider : ExtensionIdProvider<JournalRavenDbPersistence>
     {

@@ -2,7 +2,7 @@
 using Akka.Configuration;
 using Akka.Persistence.Query;
 
-namespace Akka.Persistence.RavenDB.Query
+namespace Akka.Persistence.RavenDb.Query
 {
     public class RavenDbReadJournalProvider : IReadJournalProvider
     {

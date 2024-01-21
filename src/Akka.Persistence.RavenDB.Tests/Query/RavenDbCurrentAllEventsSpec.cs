@@ -1,10 +1,10 @@
 ﻿using Akka.Persistence.Query;
-using Akka.Persistence.RavenDB.Query;
+using Akka.Persistence.RavenDb.Query;
 using Akka.Persistence.TCK.Query;
 using Raven.Client.Documents;
 using Xunit.Abstractions;
 
-namespace Akka.Persistence.RavenDB.Tests.Query;
+namespace Akka.Persistence.RavenDb.Tests.Query;
 
 public class RavenDbCurrentAllEventsSpec : CurrentAllEventsSpec, IClassFixture<RavenDbFixture>
 {

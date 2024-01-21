@@ -1,12 +1,12 @@
 ﻿using System.Threading.Channels;
 using Akka.Actor;
 using Akka.Persistence.Query;
-using Akka.Persistence.RavenDB.Journal;
+using Akka.Persistence.RavenDb.Journal;
 using Raven.Client.Documents.Changes;
 using Raven.Client.Documents.Operations;
 using Raven.Client.Documents.Session;
 
-namespace Akka.Persistence.RavenDB.Query.ContinuousQuery;
+namespace Akka.Persistence.RavenDb.Query.ContinuousQuery;
 
 public class EventsByTag : ContinuousQuery<TimeoutChange>
 {

@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 using Akka.Configuration;
 using Xunit.Abstractions;
 
-namespace Akka.Persistence.RavenDB.Tests
+namespace Akka.Persistence.RavenDb.Tests
 {
     public class RavenDbJournalPerfSpec : JournalPerfSpec, IClassFixture<RavenDbFixture>
     {

@@ -1,10 +1,10 @@
 ﻿using System.Threading.Channels;
 using Akka.Actor;
 using Akka.Persistence.Query;
-using Akka.Persistence.RavenDB.Journal;
+using Akka.Persistence.RavenDb.Journal;
 using Raven.Client.Documents.Changes;
 
-namespace Akka.Persistence.RavenDB.Query.ContinuousQuery;
+namespace Akka.Persistence.RavenDb.Query.ContinuousQuery;
 
 public class EventsByPersistenceId : ContinuousQuery<DocumentChange>
 {

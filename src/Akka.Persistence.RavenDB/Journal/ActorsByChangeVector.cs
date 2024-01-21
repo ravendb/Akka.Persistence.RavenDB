@@ -1,9 +1,9 @@
-﻿using Akka.Persistence.RavenDB.Journal.Types;
-using Akka.Persistence.RavenDB.Query;
+﻿using Akka.Persistence.RavenDb.Journal.Types;
+using Akka.Persistence.RavenDb.Query;
 using Raven.Client;
 using Raven.Client.Documents.Indexes;
 
-namespace Akka.Persistence.RavenDB.Journal;
+namespace Akka.Persistence.RavenDb.Journal;
 
 public class ActorsByChangeVector : AbstractIndexCreationTask<ActorId>
 {

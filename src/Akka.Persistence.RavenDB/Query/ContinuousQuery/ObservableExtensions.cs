@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.Text;
 
-namespace Akka.Persistence.RavenDB.Query.ContinuousQuery
+namespace Akka.Persistence.RavenDb.Query.ContinuousQuery
 {
     public static class ObservableExtensions
     {

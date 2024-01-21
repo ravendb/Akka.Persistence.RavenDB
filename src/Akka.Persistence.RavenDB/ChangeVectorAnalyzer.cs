@@ -1,7 +1,7 @@
 ﻿using System.Text.RegularExpressions;
 using System.Collections.Generic;
 
-namespace Akka.Persistence.RavenDB;
+namespace Akka.Persistence.RavenDb;
 
 public static class ChangeVectorAnalyzer
 {

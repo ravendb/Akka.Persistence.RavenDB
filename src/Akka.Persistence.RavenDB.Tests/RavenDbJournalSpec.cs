@@ -1,7 +1,7 @@
 using Akka.Persistence.TCK.Journal;
 using Raven.Client.Documents;
 
-namespace Akka.Persistence.RavenDB.Tests
+namespace Akka.Persistence.RavenDb.Tests
 {
     public class RavenDbJournalSpec : JournalSpec, IClassFixture<RavenDbFixture>
     {

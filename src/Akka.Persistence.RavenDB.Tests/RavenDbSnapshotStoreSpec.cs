@@ -5,7 +5,7 @@ using System.Text;
 using System.Threading.Tasks;
 using Akka.Persistence.TCK.Snapshot;
 
-namespace Akka.Persistence.RavenDB.Tests
+namespace Akka.Persistence.RavenDb.Tests
 {
     public class RavenDbSnapshotStoreSpec : SnapshotStoreSpec, IClassFixture<RavenDbFixture>
     {

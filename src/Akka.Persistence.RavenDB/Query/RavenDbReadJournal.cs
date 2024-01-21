@@ -4,15 +4,15 @@ using Akka.Configuration;
 using Akka.Persistence.Query;
 using Akka.Streams.Dsl;
 using System.Threading.Channels;
-using Akka.Persistence.RavenDB.Journal;
-using Akka.Persistence.RavenDB.Journal.Types;
-using Akka.Persistence.RavenDB.Query.ContinuousQuery;
+using Akka.Persistence.RavenDb.Journal;
+using Akka.Persistence.RavenDb.Journal.Types;
+using Akka.Persistence.RavenDb.Query.ContinuousQuery;
 using Akka.Persistence.Serialization;
 using Nito.AsyncEx;
 using Raven.Client.Documents.Linq;
 using Raven.Client.Documents.Subscriptions;
 
-namespace Akka.Persistence.RavenDB.Query
+namespace Akka.Persistence.RavenDb.Query
 {
     public class RavenDbReadJournal :
         IPersistenceIdsQuery,

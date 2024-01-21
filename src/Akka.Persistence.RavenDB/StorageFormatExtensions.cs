@@ -1,4 +1,4 @@
-﻿using Akka.Persistence.RavenDB;
+﻿using Akka.Persistence.RavenDb;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -6,7 +6,7 @@ using System.Net.Sockets;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Akka.Persistence.RavenDB
+namespace Akka.Persistence.RavenDb
 {
     public static class StorageFormatExtensions
     {

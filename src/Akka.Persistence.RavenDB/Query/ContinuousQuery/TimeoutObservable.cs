@@ -1,6 +1,6 @@
 ﻿using Raven.Client.Documents.Changes;
 
-namespace Akka.Persistence.RavenDB.Query.ContinuousQuery;
+namespace Akka.Persistence.RavenDb.Query.ContinuousQuery;
 
 public class TimeoutObservable : IChangesObservable<TimeoutChange>
 {

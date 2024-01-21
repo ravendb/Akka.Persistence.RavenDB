@@ -2,13 +2,13 @@
 using System.Reflection;
 using Akka.Actor;
 using Akka.Configuration;
-using Akka.Persistence.RavenDB.Journal;
+using Akka.Persistence.RavenDb.Journal;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Session;
 using Raven.Client.Documents.Subscriptions;
 using Raven.Client.Http;
 
-namespace Akka.Persistence.RavenDB
+namespace Akka.Persistence.RavenDb
 {
 
     public class JournalRavenDbPersistence : RavenDbPersistence
@@ -66,7 +66,7 @@ namespace Akka.Persistence.RavenDB
 
         public static Config DefaultConfiguration()
         {
-            return ConfigurationFactory.FromResource<RavenDbPersistence>("Akka.Persistence.RavenDB.reference.conf");
+            return ConfigurationFactory.FromResource<RavenDbPersistence>("Akka.Persistence.RavenDb.reference.conf");
         }
 
         public static CancellationTokenSource StopTokenSource = new CancellationTokenSource();

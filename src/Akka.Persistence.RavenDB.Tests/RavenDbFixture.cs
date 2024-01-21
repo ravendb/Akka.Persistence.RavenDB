@@ -5,7 +5,7 @@ using Raven.Client.ServerWide;
 using Raven.TestDriver;
 using static System.Net.WebRequestMethods;
 
-namespace Akka.Persistence.RavenDB.Tests
+namespace Akka.Persistence.RavenDb.Tests
 {
     public class RavenDbFixture : RavenTestDriver
     {
@@ -51,7 +51,7 @@ namespace Akka.Persistence.RavenDB.Tests
                                    journal {
                                        plugin = "akka.persistence.journal.ravendb"
                                        ravendb {
-                                           class = "Akka.Persistence.RavenDB.Journal.RavenDbJournal, Akka.Persistence.RavenDB"
+                                           class = "Akka.Persistence.RavenDb.Journal.RavenDbJournal, Akka.Persistence.RavenDb"
                                            name = {{{name ?? Name}}}
                                            urls = ["{{{Urls[0]}}}"]
                                            event-adapters {
@@ -65,13 +65,13 @@ namespace Akka.Persistence.RavenDB.Tests
                                    snapshot-store {
                                         plugin = "akka.persistence.snapshot-store.ravendb"
                                         ravendb {
-                                            class = "Akka.Persistence.RavenDB.Snapshot.RavenDbSnapshotStore, Akka.Persistence.RavenDB"
+                                            class = "Akka.Persistence.RavenDb.Snapshot.RavenDbSnapshotStore, Akka.Persistence.RavenDb"
                                             auto-initialize = on
                                         }
                                     }
                                     query {
                                         ravendb {
-                                            class = "Akka.Persistence.RavenDB.Query.RavenDbReadJournalProvider, Akka.Persistence.RavenDB"
+                                            class = "Akka.Persistence.RavenDb.Query.RavenDbReadJournalProvider, Akka.Persistence.RavenDb"
                                             refresh-interval = 1s
                                             wait-for-non-stale = true
                                         }

@@ -5,7 +5,7 @@ using Akka.Persistence.Journal;
 using Akka.Persistence.Serialization;
 using Akka.Util;
 
-namespace Akka.Persistence.RavenDB.Journal.Types
+namespace Akka.Persistence.RavenDb.Journal.Types
 {
     public class Event
     {

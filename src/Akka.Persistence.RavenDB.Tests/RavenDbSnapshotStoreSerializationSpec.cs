@@ -1,7 +1,7 @@
 ﻿using Akka.Persistence.TCK.Serialization;
 using Xunit.Abstractions;
 
-namespace Akka.Persistence.RavenDB.Tests
+namespace Akka.Persistence.RavenDb.Tests
 {
     public class RavenDbSnapshotStoreSerializationSpec : SnapshotStoreSerializationSpec, IClassFixture<RavenDbFixture>
     {

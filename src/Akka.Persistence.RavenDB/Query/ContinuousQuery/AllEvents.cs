@@ -2,9 +2,9 @@
 using Akka.Actor;
 using Akka.Persistence.Query;
 using Raven.Client.Documents.Changes;
-using static Akka.Persistence.RavenDB.Query.ContinuousQuery.AllEvents;
+using static Akka.Persistence.RavenDb.Query.ContinuousQuery.AllEvents;
 
-namespace Akka.Persistence.RavenDB.Query.ContinuousQuery;
+namespace Akka.Persistence.RavenDb.Query.ContinuousQuery;
 
 public class AllEvents : ContinuousQuery<TimeoutChange>
 {

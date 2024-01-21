@@ -1,9 +1,9 @@
 ﻿using System.Threading.Channels;
-using Akka.Persistence.RavenDB.Journal;
-using Akka.Persistence.RavenDB.Journal.Types;
+using Akka.Persistence.RavenDb.Journal;
+using Akka.Persistence.RavenDb.Journal.Types;
 using Raven.Client.Documents.Changes;
 
-namespace Akka.Persistence.RavenDB.Query.ContinuousQuery;
+namespace Akka.Persistence.RavenDb.Query.ContinuousQuery;
 
 public class PersistenceIds : ContinuousQuery<IndexChange, string>
 {
