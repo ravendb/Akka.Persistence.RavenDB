@@ -6,7 +6,6 @@
         public string Id;
         public string PersistenceId;
         public long MaxSequenceNr;
-        public DateTime CreatedAt;
 
         public static string CreateNewScript =
             @$"
@@ -15,7 +14,6 @@ this['{Raven.Client.Constants.Documents.Metadata.Key}']['{Raven.Client.Constants
 this['{Raven.Client.Constants.Documents.Metadata.Key}']['{Raven.Client.Constants.Documents.Metadata.RavenClrType}'] = args.type;
 this['{nameof(MaxSequenceNr)}'] = args.{nameof(MaxSequenceNr)};
 this['{nameof(PersistenceId)}'] = args.{nameof(PersistenceId)};
-this['{nameof(CreatedAt)}'] = new Date().toISOString();
 
 let uid = 'UniqueActors/' + args.{nameof(PersistenceId)}; 
 if(load(uid) == null)

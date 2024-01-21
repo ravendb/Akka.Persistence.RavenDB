@@ -14,7 +14,7 @@ using Raven.Client.Documents.Subscriptions;
 
 namespace Akka.Persistence.RavenDB.Query
 {
-    public partial class RavenDbReadJournal :
+    public class RavenDbReadJournal :
         IPersistenceIdsQuery,
         ICurrentPersistenceIdsQuery,
         IEventsByPersistenceIdQuery,
@@ -137,7 +137,7 @@ namespace Akka.Persistence.RavenDB.Query
         public Source<EventEnvelope, NotUsed> EventsByTag(string tag, Offset offset)
         {
             var channel = Channel.CreateBounded<EventEnvelope>(_maxBufferSize);
-            var q = new EventsByTag(tag, Offset(offset), this, channel);
+            var q = new EventsByTag(tag, ChangeVectorOffset.Convert(offset), this, channel);
             Task.Run(q.Run);
 
             return Source.ChannelReader(channel.Reader);
@@ -154,7 +154,7 @@ namespace Akka.Persistence.RavenDB.Query
                     session.Advanced.SessionInfo.SetContext(tag);
 
                     var q = session.Advanced.AsyncDocumentQuery<Journal.Types.Event>(nameof(EventsByTagAndChangeVector)).ContainsAny(e => e.Tags, new[] { tag });
-                    q = Offset(offset).ApplyOffset(q);
+                    q = ChangeVectorOffset.Convert(offset).ApplyOffset(q);
 
                     await using var results = await session.Advanced.StreamAsync(q);
                     while (await results.MoveNextAsync())
@@ -179,7 +179,7 @@ namespace Akka.Persistence.RavenDB.Query
         public Source<EventEnvelope, NotUsed> AllEvents(Offset offset)
         {
             var channel = Channel.CreateBounded<EventEnvelope>(_maxBufferSize);
-            var q = new AllEvents(this, channel, Offset(offset));
+            var q = new AllEvents(this, channel, ChangeVectorOffset.Convert(offset));
             Task.Run(q.Run);
 
             return Source.ChannelReader(channel.Reader);
@@ -194,7 +194,7 @@ namespace Akka.Persistence.RavenDB.Query
                 {
                     using var session = Storage.OpenAsyncSession();
                     var q = session.Advanced.AsyncDocumentQuery<Journal.Types.Event>(indexName: nameof(EventsByTagAndChangeVector));
-                    q = Offset(offset).ApplyOffset(q);
+                    q = ChangeVectorOffset.Convert(offset).ApplyOffset(q);
 
                     await using var results = await session.Advanced.StreamAsync(q);
                     while (await results.MoveNextAsync())
@@ -215,15 +215,5 @@ namespace Akka.Persistence.RavenDB.Query
 
             return Source.ChannelReader(currentAllEvents.Reader);
         }
-
-        private static ChangeVectorOffset Offset(Offset offset) =>
-            offset switch
-            {
-                null => new ChangeVectorOffset(string.Empty),
-                NoOffset _ => new ChangeVectorOffset(string.Empty),
-                Sequence { Value: 0 } => new ChangeVectorOffset(string.Empty), 
-                ChangeVectorOffset cv => cv,
-                _ => throw new ArgumentException($"ReadJournal does not support {offset.GetType().Name} offsets")
-            };
     }
 }

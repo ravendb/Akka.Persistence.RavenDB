@@ -26,6 +26,16 @@ public class ChangeVectorOffset : Offset
 
     public override string ToString() => ChangeVector;
 
+    public static ChangeVectorOffset Convert(Offset offset) =>
+        offset switch
+        {
+            null => new ChangeVectorOffset(string.Empty),
+            NoOffset _ => new ChangeVectorOffset(string.Empty),
+            Sequence { Value: 0 } => new ChangeVectorOffset(string.Empty), 
+            ChangeVectorOffset cv => cv,
+            _ => throw new ArgumentException($"ReadJournal does not support {offset.GetType().Name} offsets")
+        };
+
     public IAsyncDocumentQuery<T> ApplyOffset<T>(IAsyncDocumentQuery<T> q)
     {
         for (var index = 0; index < Elements.Count; index++)
@@ -48,10 +58,11 @@ public class ChangeVectorOffset : Offset
             }
         }
 
+        /*
         foreach (var changeVectorElement in Elements)
         {
             q = q.OrderBy(changeVectorElement.DatabaseId);
-        }
+        }*/
 
         return q;
     }

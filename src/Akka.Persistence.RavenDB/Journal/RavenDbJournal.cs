@@ -149,20 +149,25 @@ namespace Akka.Persistence.RavenDB.Journal
 
         protected override async Task DeleteMessagesToAsync(string persistenceId, long toSequenceNr)
         {
-            // TODO batch this ?
-            using var cts = RavenDbPersistence.CancellationTokenSource;
-            using var session = _storage.OpenAsyncSession();
-            await using var results = await session.Advanced.StreamAsync<Types.Event>(startsWith: GetEventPrefix(persistenceId), token: cts.Token);
-            while (await results.MoveNextAsync())
+            var batch = 1024;
+            int deleted;
+            do
             {
-                var current = results.Current.Document;
-                if (current.SequenceNr > toSequenceNr)
-                    break;
+                deleted = 0;
+                using var cts = RavenDbPersistence.CancellationTokenSource;
+                using var session = _storage.OpenAsyncSession();
+                await using var results = await session.Advanced.StreamAsync<Types.Event>(startsWith: GetEventPrefix(persistenceId), pageSize: batch, token: cts.Token);
+                while (await results.MoveNextAsync())
+                {
+                    var current = results.Current.Document;
+                    if (current.SequenceNr > toSequenceNr)
+                        break;
 
-                session.Delete(current.Id);
-            }
-
-            await session.SaveChangesAsync(cts.Token);
+                    deleted++;
+                    session.Delete(current.Id);
+                }
+                await session.SaveChangesAsync(cts.Token);
+            } while (deleted == batch);
         }
 
         private AsyncReaderWriterLock GetLocker(string persistenceId) => _lockPerActor.GetOrAdd(persistenceId, new AsyncReaderWriterLock());
