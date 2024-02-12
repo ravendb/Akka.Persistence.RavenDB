@@ -12,7 +12,7 @@ namespace Akka.Persistence.RavenDb.Journal.Types
         public string Id;
         public string PersistenceId;
         public long SequenceNr;
-        public object Payload; // base64
+        public object Payload;
         public int SerializationId;
         public long Timestamp;
         public string WriterGuid;

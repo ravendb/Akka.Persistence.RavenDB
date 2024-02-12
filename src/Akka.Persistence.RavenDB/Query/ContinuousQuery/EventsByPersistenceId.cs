@@ -1,8 +1,7 @@
-﻿using System.Threading.Channels;
-using Akka.Actor;
+﻿using Akka.Actor;
 using Akka.Persistence.Query;
-using Akka.Persistence.RavenDb.Journal;
 using Raven.Client.Documents.Changes;
+using System.Threading.Channels;
 
 namespace Akka.Persistence.RavenDb.Query.ContinuousQuery;
 
@@ -21,7 +20,7 @@ public class EventsByPersistenceId : ContinuousQuery<DocumentChange>
 
     protected override IChangesObservable<DocumentChange> Subscribe(IDatabaseChanges changes)
     {
-        var prefix = RavenDbJournal.GetEventPrefix(_persistenceId);
+        var prefix = Ravendb.Storage.GetEventPrefix(_persistenceId);
         return changes.ForDocumentsStartingWith(prefix);
     }
 
@@ -30,8 +29,8 @@ public class EventsByPersistenceId : ContinuousQuery<DocumentChange>
         using var session = Ravendb.Storage.OpenAsyncSession();
         session.Advanced.SessionInfo.SetContext(_persistenceId);
 
-        await using var results = await session.Advanced.StreamAsync<Journal.Types.Event>(startsWith: RavenDbJournal.GetEventPrefix(_persistenceId),
-            startAfter: RavenDbJournal.GetSequenceId(_persistenceId, _fromSequenceNr));
+        await using var results = await session.Advanced.StreamAsync<Journal.Types.Event>(startsWith: Ravendb.Storage.GetEventPrefix(_persistenceId),
+            startAfter: Ravendb.Storage.GetSequenceId(_persistenceId, _fromSequenceNr));
         while (await results.MoveNextAsync())
         {
             var @event = results.Current.Document;

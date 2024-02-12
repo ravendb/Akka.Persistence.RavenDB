@@ -1,8 +1,7 @@
-﻿using System.Threading.Channels;
-using Akka.Actor;
+﻿using Akka.Actor;
 using Akka.Persistence.Query;
 using Raven.Client.Documents.Changes;
-using static Akka.Persistence.RavenDb.Query.ContinuousQuery.AllEvents;
+using System.Threading.Channels;
 
 namespace Akka.Persistence.RavenDb.Query.ContinuousQuery;
 
@@ -17,7 +16,7 @@ public class AllEvents : ContinuousQuery<TimeoutChange>
 
     protected override IChangesObservable<TimeoutChange> Subscribe(IDatabaseChanges changes)
     {
-        return new TimeoutObservable(Ravendb.RefreshInterval);
+        return new TimeoutObservable(Ravendb.Storage.QueryConfiguration.RefreshInterval);
     }
 
     protected override async Task Query()

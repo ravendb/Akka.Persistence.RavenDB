@@ -1,20 +1,15 @@
-﻿using System;
-using Akka.Actor;
+﻿using Akka.Actor;
 using Akka.Configuration;
 using Akka.Persistence.Query;
-using Akka.Streams.Dsl;
-using System.Threading.Channels;
 using Akka.Persistence.RavenDb.Journal;
 using Akka.Persistence.RavenDb.Journal.Types;
 using Akka.Persistence.RavenDb.Query.ContinuousQuery;
-using Akka.Persistence.Serialization;
-using Nito.AsyncEx;
-using Raven.Client.Documents.Linq;
-using Raven.Client.Documents.Subscriptions;
+using Akka.Streams.Dsl;
+using System.Threading.Channels;
 
 namespace Akka.Persistence.RavenDb.Query
 {
-    public class RavenDbReadJournal :
+    public class RavenDbReadJournal ://TODO why called Journal if namespace is Query
         IPersistenceIdsQuery,
         ICurrentPersistenceIdsQuery,
         IEventsByPersistenceIdQuery,
@@ -29,37 +24,24 @@ namespace Akka.Persistence.RavenDb.Query
         /// </summary>
         public const string Identifier = "akka.persistence.query.ravendb";
 
-        private readonly string _writeJournalPluginId;
-        private readonly int _maxBufferSize;
-        private readonly ExtendedActorSystem _system;
         public readonly JournalRavenDbPersistence Storage;
         private readonly Akka.Serialization.Serialization _serialization;
-        public readonly TimeSpan RefreshInterval;
-
+        
         public RavenDbReadJournal(ExtendedActorSystem system, Config config)
         {
-            _writeJournalPluginId = config.GetString("write-plugin");
-            _maxBufferSize = config.GetInt("max-buffer-size"); 
-            if (_maxBufferSize == 0)
-                _maxBufferSize = 64 * 1024;
-
-            _system = system;
-            _serialization = system.Serialization;
-            
+            _serialization = system.Serialization;//TODO move to configuration class?
             Storage = system.WithExtension<JournalRavenDbPersistence, JournalRavenDbPersistenceProvider>();
-            RefreshInterval = config.GetTimeSpan("refresh-interval", @default: TimeSpan.FromSeconds(5));
-            Storage.WaitForNonStale = config.GetBoolean("wait-for-non-stale");
         }
 
         public void PreStart()
         {
-            new EventsByTagAndChangeVector().Execute(RavenDbPersistence.Instance, database: Storage.Database);
-            new ActorsByChangeVector().Execute(RavenDbPersistence.Instance, database: Storage.Database);
+            new EventsByTagAndChangeVector().Execute(Storage.Instance, database: Storage.JournalConfiguration.Name);
+            new ActorsByChangeVector().Execute(Storage.Instance, database: Storage.JournalConfiguration.Name);
         }
 
         public Source<string, NotUsed> PersistenceIds()
         {
-            var channel = Channel.CreateBounded<string>(_maxBufferSize);
+            var channel = Channel.CreateBounded<string>(Storage.QueryConfiguration.MaxBufferSize);
             var q = new PersistenceIds(this, channel);
             Task.Run(q.Run);
 
@@ -68,7 +50,7 @@ namespace Akka.Persistence.RavenDb.Query
 
         public Source<string, NotUsed> CurrentPersistenceIds()
         {
-            var currentPersistenceIdsChannel = Channel.CreateBounded<string>(_maxBufferSize);
+            var currentPersistenceIdsChannel = Channel.CreateBounded<string>(Storage.QueryConfiguration.MaxBufferSize);
             Task.Run(async () =>
             {
                 try
@@ -94,7 +76,7 @@ namespace Akka.Persistence.RavenDb.Query
 
         public Source<EventEnvelope, NotUsed> EventsByPersistenceId(string persistenceId, long fromSequenceNr, long toSequenceNr)
         {
-            var channel = Channel.CreateBounded<EventEnvelope>(_maxBufferSize);
+            var channel = Channel.CreateBounded<EventEnvelope>(Storage.QueryConfiguration.MaxBufferSize);
             var q = new EventsByPersistenceId(persistenceId, fromSequenceNr, toSequenceNr, channel, this);
             Task.Run(q.Run);
 
@@ -103,7 +85,7 @@ namespace Akka.Persistence.RavenDb.Query
 
         public Source<EventEnvelope, NotUsed> CurrentEventsByPersistenceId(string persistenceId, long fromSequenceNr, long toSequenceNr)
         {
-            var currentEventsByPersistenceIdChannel = Channel.CreateBounded<EventEnvelope>(_maxBufferSize);
+            var currentEventsByPersistenceIdChannel = Channel.CreateBounded<EventEnvelope>(Storage.QueryConfiguration.MaxBufferSize);
             Task.Run(async () =>
             {
                 try
@@ -111,7 +93,9 @@ namespace Akka.Persistence.RavenDb.Query
                     using var session = Storage.OpenAsyncSession();
                     session.Advanced.SessionInfo.SetContext(persistenceId);
 
-                    await using var results = await session.Advanced.StreamAsync<Journal.Types.Event>(startsWith: RavenDbJournal.GetEventPrefix(persistenceId), startAfter: RavenDbJournal.GetSequenceId(persistenceId, fromSequenceNr - 1));
+                    await using var results = await session.Advanced.StreamAsync<Journal.Types.Event>(
+                        startsWith: Storage.GetEventPrefix(persistenceId),
+                        startAfter: Storage.GetSequenceId(persistenceId, fromSequenceNr - 1));
                     while (await results.MoveNextAsync())
                     {
                         var @event = results.Current.Document;
@@ -119,7 +103,8 @@ namespace Akka.Persistence.RavenDb.Query
                             break;
 
                         var persistent = Journal.Types.Event.Deserialize(_serialization, @event, ActorRefs.NoSender);
-                        var e = new EventEnvelope(new Sequence(@event.Timestamp), @event.PersistenceId, @event.SequenceNr, persistent.Payload, @event.Timestamp, @event.Tags);
+                        var e = new EventEnvelope(new Sequence(@event.Timestamp), @event.PersistenceId,
+                            @event.SequenceNr, persistent.Payload, @event.Timestamp, @event.Tags);
                         await currentEventsByPersistenceIdChannel.Writer.WriteAsync(e);
                     }
 
@@ -136,7 +121,7 @@ namespace Akka.Persistence.RavenDb.Query
 
         public Source<EventEnvelope, NotUsed> EventsByTag(string tag, Offset offset)
         {
-            var channel = Channel.CreateBounded<EventEnvelope>(_maxBufferSize);
+            var channel = Channel.CreateBounded<EventEnvelope>(Storage.QueryConfiguration.MaxBufferSize);
             var q = new EventsByTag(tag, ChangeVectorOffset.Convert(offset), this, channel);
             Task.Run(q.Run);
 
@@ -145,7 +130,7 @@ namespace Akka.Persistence.RavenDb.Query
 
         public Source<EventEnvelope, NotUsed> CurrentEventsByTag(string tag, Offset offset)
         {
-            var currentEventsByTag = Channel.CreateBounded<EventEnvelope>(_maxBufferSize);
+            var currentEventsByTag = Channel.CreateBounded<EventEnvelope>(Storage.QueryConfiguration.MaxBufferSize);
             Task.Run(async () =>
             {
                 try
@@ -178,7 +163,7 @@ namespace Akka.Persistence.RavenDb.Query
 
         public Source<EventEnvelope, NotUsed> AllEvents(Offset offset)
         {
-            var channel = Channel.CreateBounded<EventEnvelope>(_maxBufferSize);
+            var channel = Channel.CreateBounded<EventEnvelope>(Storage.QueryConfiguration.MaxBufferSize);
             var q = new AllEvents(this, channel, ChangeVectorOffset.Convert(offset));
             Task.Run(q.Run);
 
@@ -187,7 +172,7 @@ namespace Akka.Persistence.RavenDb.Query
 
         public Source<EventEnvelope, NotUsed> CurrentAllEvents(Offset offset)
         {
-            var currentAllEvents = Channel.CreateBounded<EventEnvelope>(_maxBufferSize);
+            var currentAllEvents = Channel.CreateBounded<EventEnvelope>(Storage.QueryConfiguration.MaxBufferSize);
             Task.Run(async () =>
             {
                 try

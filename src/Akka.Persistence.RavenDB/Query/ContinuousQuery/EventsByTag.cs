@@ -21,7 +21,7 @@ public class EventsByTag : ContinuousQuery<TimeoutChange>
 
     protected override IChangesObservable<TimeoutChange> Subscribe(IDatabaseChanges changes)
     {
-        return new TimeoutObservable(Ravendb.RefreshInterval);
+        return new TimeoutObservable(Ravendb.Storage.QueryConfiguration.RefreshInterval);
     }
 
     protected override async Task Query()

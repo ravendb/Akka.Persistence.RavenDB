@@ -1,22 +1,17 @@
-﻿using System.Collections.Concurrent;
+﻿using Akka.Actor;
 using Akka.Persistence.Journal;
-using System.Collections.Immutable;
-using System.Diagnostics;
-using Akka.Actor;
 using Akka.Persistence.RavenDb.Journal.Types;
-using Akka.Persistence.Serialization;
+using Nito.AsyncEx;
 using Raven.Client.Documents.Commands.Batches;
 using Raven.Client.Documents.Operations;
-using Nito.AsyncEx;
-using Raven.Client;
-using Raven.Client.Documents.Queries;
-using Akka.Persistence.RavenDb.Query.ContinuousQuery;
+using System.Collections.Concurrent;
+using System.Collections.Immutable;
 
 namespace Akka.Persistence.RavenDb.Journal
 {
     public class RavenDbJournal : AsyncWriteJournal
     {
-        private readonly JournalRavenDbPersistence _storage = Context.System.WithExtension<JournalRavenDbPersistence, JournalRavenDbPersistenceProvider>();
+        private readonly JournalRavenDbPersistence _storage = Context.System.WithExtension<JournalRavenDbPersistence, JournalRavenDbPersistenceProvider>();//TODO what does this do
         private readonly Akka.Serialization.Serialization _serialization = Context.System.Serialization;
 
         //requests for the highest sequence number may be made concurrently to writes executing for the same persistenceId.
@@ -34,7 +29,7 @@ namespace Akka.Persistence.RavenDb.Journal
             using var cts = RavenDbPersistence.CancellationTokenSource;
             session.Advanced.SessionInfo.SetContext(persistenceId);
             
-            await using var results = await session.Advanced.StreamAsync<Types.Event>(startsWith: GetEventPrefix(persistenceId), startAfter: GetSequenceId(persistenceId, fromSequenceNr - 1), token: cts.Token);
+            await using var results = await session.Advanced.StreamAsync<Types.Event>(startsWith: _storage.GetEventPrefix(persistenceId), startAfter: _storage.GetSequenceId(persistenceId, fromSequenceNr - 1), token: cts.Token);
             while (max > 0 && await results.MoveNextAsync())
             {
                 var message = results.Current.Document;
@@ -55,7 +50,7 @@ namespace Akka.Persistence.RavenDb.Journal
                 using var cts = RavenDbPersistence.CancellationTokenSource;
                 session.Advanced.SessionInfo.SetContext(persistenceId);
 
-                var metadata = await session.LoadAsync<Metadata>(GetMetadataId(persistenceId), cts.Token);
+                var metadata = await session.LoadAsync<Metadata>(_storage.GetMetadataId(persistenceId), cts.Token);
                 return metadata?.MaxSequenceNr ?? 0;
 
                 // TODO read last event with the prefix of 'persistenceId' 
@@ -99,6 +94,8 @@ namespace Akka.Persistence.RavenDb.Journal
             using var _ = await GetLocker(persistenceId).ReaderLockAsync(cts.Token);
             using var session = _storage.OpenAsyncSession();
             session.Advanced.SessionInfo.SetContext(persistenceId);
+            // session.Advanced.SetTransactionMode(mode);
+
             var highest = long.MinValue;
             var lowest = long.MaxValue;
 
@@ -111,14 +108,14 @@ namespace Akka.Persistence.RavenDb.Journal
 
                 foreach (var representation in payload)
                 {
-                    var id = GetSequenceId(representation.PersistenceId, representation.SequenceNr);
+                    var id = _storage.GetSequenceId(representation.PersistenceId, representation.SequenceNr);
                     var journalEvent = Types.Event.Serialize(_serialization, representation);
                     // events are immutable and should always be new 
                     await session.StoreAsync(journalEvent, changeVector: string.Empty, id, cts.Token);
                 }
             }
 
-            var metadataId = GetMetadataId(persistenceId);
+            var metadataId = _storage.GetMetadataId(persistenceId);
             session.Advanced.Defer(new PatchCommandData(metadataId, changeVector: null, patch: new PatchRequest
             {
                 Script = Metadata.UpdateScript,
@@ -134,14 +131,14 @@ namespace Akka.Persistence.RavenDb.Journal
                 {
                     [nameof(Metadata.PersistenceId)] = persistenceId,
                     [nameof(Metadata.MaxSequenceNr)] = highest,
-                    ["collection"] = EventsMetadataCollection,
-                    ["type"] = RavenDbPersistence.Instance.Conventions.FindClrTypeName(typeof(Metadata)),
-                    ["collection2"] = RavenDbPersistence.Instance.Conventions.FindCollectionName(typeof(ActorId)),
-                    ["type2"] = RavenDbPersistence.Instance.Conventions.FindClrTypeName(typeof(ActorId))
+                    ["collection"] = _storage.EventsMetadataCollection,
+                    ["type"] = _storage.Instance.Conventions.FindClrTypeName(typeof(Metadata)),
+                    ["collection2"] = _storage.Instance.Conventions.FindCollectionName(typeof(ActorId)),
+                    ["type2"] = _storage.Instance.Conventions.FindClrTypeName(typeof(ActorId))
                 }
             }));
 
-            if (_storage.WaitForNonStale) // used for tests
+            if (_storage.JournalConfiguration.WaitForNonStale) // used for tests
                 session.Advanced.WaitForIndexesAfterSaveChanges();
             
             await session.SaveChangesAsync(cts.Token);
@@ -156,7 +153,7 @@ namespace Akka.Persistence.RavenDb.Journal
                 deleted = 0;
                 using var cts = RavenDbPersistence.CancellationTokenSource;
                 using var session = _storage.OpenAsyncSession();
-                await using var results = await session.Advanced.StreamAsync<Types.Event>(startsWith: GetEventPrefix(persistenceId), pageSize: batch, token: cts.Token);
+                await using var results = await session.Advanced.StreamAsync<Types.Event>(startsWith: _storage.GetEventPrefix(persistenceId), pageSize: batch, token: cts.Token);
                 while (await results.MoveNextAsync())
                 {
                     var current = results.Current.Document;
@@ -171,20 +168,5 @@ namespace Akka.Persistence.RavenDb.Journal
         }
 
         private AsyncReaderWriterLock GetLocker(string persistenceId) => _lockPerActor.GetOrAdd(persistenceId, new AsyncReaderWriterLock());
-
-        private static string GetMetadataId(string persistenceId) => $"{EventsMetadataCollection}/{persistenceId}";
-
-        public static string GetEventPrefix(string persistenceId) => $"{EventsCollection}/{persistenceId}/";
-
-        public static string GetSequenceId(string persistenceId, long sequenceNr)
-        {
-            if (sequenceNr <= 0) 
-                sequenceNr = 0;
-
-            return $"{GetEventPrefix(persistenceId)}{sequenceNr.ToLeadingZerosFormat()}";
-        }
-
-        private static string EventsCollection = RavenDbPersistence.Instance.Conventions.FindCollectionName(typeof(Types.Event));
-        private static string EventsMetadataCollection = RavenDbPersistence.Instance.Conventions.FindCollectionName(typeof(Metadata));
     }
 }

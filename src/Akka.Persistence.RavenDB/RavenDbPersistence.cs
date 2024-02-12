@@ -1,12 +1,9 @@
-﻿using System.Linq.Expressions;
-using System.Reflection;
-using Akka.Actor;
-using Akka.Configuration;
-using Akka.Persistence.RavenDb.Journal;
+﻿using Akka.Actor;
+using Akka.Persistence.RavenDb.Journal.Types;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Session;
-using Raven.Client.Documents.Subscriptions;
 using Raven.Client.Http;
+using System.Security.Cryptography.X509Certificates;
 
 namespace Akka.Persistence.RavenDb
 {
@@ -26,16 +23,15 @@ namespace Akka.Persistence.RavenDb
             
         }
     }
+
     public abstract class RavenDbPersistence : IExtension
     {
-        public static IDocumentStore Instance => _instance ??= CreateStore();
-        private static IDocumentStore _instance;
+        public IDocumentStore Instance => _instance ??= CreateStore();
+        private IDocumentStore _instance;
 
-        private static readonly TimeSpan? _timout = null;
-        public string Database;
-        public static IList<string> Urls;
-        public bool WaitForNonStale { get; set; }
-
+        public RavenDbJournalConfiguration JournalConfiguration;
+        public RavenDbQueryConfiguration QueryConfiguration;
+        
         public readonly Akka.Serialization.Serialization Serialization;
 
         protected RavenDbPersistence(ExtendedActorSystem system)
@@ -43,44 +39,53 @@ namespace Akka.Persistence.RavenDb
             if (system == null)
                 throw new ArgumentNullException(nameof(system));
 
-            var journalConfig = system.Settings.Config.GetConfig("akka.persistence.journal.ravendb");
-            Database = journalConfig.GetString("name") ?? throw new ArgumentException("name must be provided");
-            Urls = journalConfig.GetStringList("urls") ?? throw new ArgumentException("urls must be provided");
+            JournalConfiguration = new RavenDbJournalConfiguration(system.Settings.Config.GetConfig("akka.persistence.journal.ravendb"));
+            QueryConfiguration = new RavenDbQueryConfiguration(system.Settings.Config.GetConfig("akka.persistence.query.ravendb"));
+
             Serialization = system.Serialization;
         }
 
+        public IAsyncDocumentSession OpenAsyncSession() => Instance.OpenAsyncSession(JournalConfiguration.Name);
 
-        public IAsyncDocumentSession OpenAsyncSession() => Instance.OpenAsyncSession(Database); 
-
-        private static IDocumentStore CreateStore()
+        private IDocumentStore CreateStore()
         {
             var store = new DocumentStore
             {
-                Urls = Urls.ToArray(), 
+                Urls = JournalConfiguration.Urls.ToArray(),
+                Conventions = JournalConfiguration.ToDocumentConventions()
             };
+
+            if (string.IsNullOrEmpty(JournalConfiguration.CertificatePath) == false)
+                store.Certificate = new X509Certificate2(JournalConfiguration.Certificate);
+
             store.Conventions.LoadBalanceBehavior = LoadBalanceBehavior.UseSessionContext;
             store.Initialize();
 
             return store;
         }
 
-        public static Config DefaultConfiguration()
-        {
-            return ConfigurationFactory.FromResource<RavenDbPersistence>("Akka.Persistence.RavenDb.reference.conf");
-        }
+        //public static Config DefaultConfiguration()
+        //{
+        //    return ConfigurationFactory.FromResource<RavenDbPersistence>("Akka.Persistence.RavenDb.reference.conf");
+        //}
 
         public static CancellationTokenSource StopTokenSource = new CancellationTokenSource();
         public void Stop() => StopTokenSource.Cancel();
+        public static CancellationTokenSource CancellationTokenSource => CancellationTokenSource.CreateLinkedTokenSource(StopTokenSource.Token);
 
-        public static CancellationTokenSource CancellationTokenSource
+        public string GetMetadataId(string persistenceId) => $"{EventsMetadataCollection}/{persistenceId}";
+
+        public string GetEventPrefix(string persistenceId) => $"{EventsCollection}/{persistenceId}/";
+
+        public string GetSequenceId(string persistenceId, long sequenceNr)
         {
-            get
-            {
-                var cts = CancellationTokenSource.CreateLinkedTokenSource(StopTokenSource.Token);
-                if (_timout.HasValue)
-                    cts.CancelAfter(_timout.Value);
-                return cts;
-            }
+            if (sequenceNr <= 0)
+                sequenceNr = 0;
+
+            return $"{GetEventPrefix(persistenceId)}{sequenceNr.ToLeadingZerosFormat()}";
         }
+
+        public string EventsCollection => _instance.Conventions.FindCollectionName(typeof(Journal.Types.Event));//TODO make non function - readonly
+        public string EventsMetadataCollection => _instance.Conventions.FindCollectionName(typeof(Metadata));
     }
 }
