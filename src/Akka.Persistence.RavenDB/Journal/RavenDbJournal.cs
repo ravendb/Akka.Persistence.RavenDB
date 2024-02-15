@@ -11,7 +11,7 @@ namespace Akka.Persistence.RavenDb.Journal
 {
     public class RavenDbJournal : AsyncWriteJournal
     {
-        private readonly JournalRavenDbPersistence _storage = Context.System.WithExtension<JournalRavenDbPersistence, JournalRavenDbPersistenceProvider>();//TODO what does this do
+        private readonly RavenDbPersistence _storage = Context.System.WithExtension<RavenDbPersistence, RavenDbPersistenceProvider>();
         private readonly Akka.Serialization.Serialization _serialization = Context.System.Serialization;
 
         //requests for the highest sequence number may be made concurrently to writes executing for the same persistenceId.
@@ -26,7 +26,7 @@ namespace Akka.Persistence.RavenDb.Journal
             Action<IPersistentRepresentation> recoveryCallback)
         {
             using var session = _storage.OpenAsyncSession();
-            using var cts = RavenDbPersistence.CancellationTokenSource;
+            using var cts = _storage.GetCancellationTokenSource(useSaveChangesTimeout: false);
             session.Advanced.SessionInfo.SetContext(persistenceId);
             
             await using var results = await session.Advanced.StreamAsync<Types.Event>(startsWith: _storage.GetEventPrefix(persistenceId), startAfter: _storage.GetSequenceId(persistenceId, fromSequenceNr - 1), token: cts.Token);
@@ -42,12 +42,18 @@ namespace Akka.Persistence.RavenDb.Journal
             }
         }
 
+        protected override void PostStop()
+        {
+            _storage.Stop();
+            base.PostStop();
+        }
+
         public override async Task<long> ReadHighestSequenceNrAsync(string persistenceId, long fromSequenceNr)
         {
             using (await GetLocker(persistenceId).WriterLockAsync())
             {
                 using var session = _storage.OpenAsyncSession();
-                using var cts = RavenDbPersistence.CancellationTokenSource;
+                using var cts = _storage.GetCancellationTokenSource(useSaveChangesTimeout: true);
                 session.Advanced.SessionInfo.SetContext(persistenceId);
 
                 var metadata = await session.LoadAsync<Metadata>(_storage.GetMetadataId(persistenceId), cts.Token);
@@ -60,7 +66,7 @@ namespace Akka.Persistence.RavenDb.Journal
         protected override async Task<IImmutableList<Exception?>> WriteMessagesAsync(IEnumerable<AtomicWrite> messages)
         {
             var builder = ImmutableList.CreateBuilder<Exception?>();
-            using var cts = RavenDbPersistence.CancellationTokenSource;
+            using var cts = _storage.GetCancellationTokenSource(useSaveChangesTimeout: true);
             var writes = new Dictionary<string, Task>();
             var original = messages.ToList();
 
@@ -94,6 +100,7 @@ namespace Akka.Persistence.RavenDb.Journal
             using var _ = await GetLocker(persistenceId).ReaderLockAsync(cts.Token);
             using var session = _storage.OpenAsyncSession();
             session.Advanced.SessionInfo.SetContext(persistenceId);
+            // TODO stav: might need to set transaction mode here
             // session.Advanced.SetTransactionMode(mode);
 
             var highest = long.MinValue;
@@ -151,7 +158,7 @@ namespace Akka.Persistence.RavenDb.Journal
             do
             {
                 deleted = 0;
-                using var cts = RavenDbPersistence.CancellationTokenSource;
+                using var cts = _storage.GetCancellationTokenSource(useSaveChangesTimeout: false);
                 using var session = _storage.OpenAsyncSession();
                 await using var results = await session.Advanced.StreamAsync<Types.Event>(startsWith: _storage.GetEventPrefix(persistenceId), pageSize: batch, token: cts.Token);
                 while (await results.MoveNextAsync())

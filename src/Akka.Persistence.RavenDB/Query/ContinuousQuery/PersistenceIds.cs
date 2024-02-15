@@ -22,14 +22,16 @@ public class PersistenceIds : ContinuousQuery<IndexChange, string>
     protected override async Task Query()
     {
         using var session = Ravendb.Storage.OpenAsyncSession();
+        
         var q = session.Advanced.AsyncDocumentQuery<ActorId>(indexName: nameof(ActorsByChangeVector));
         q = _offset.ApplyOffset(q);
 
-        await using var results = await session.Advanced.StreamAsync(q);
+        using var cts = Ravendb.Storage.GetCancellationTokenSource(useSaveChangesTimeout: false);
+        await using var results = await session.Advanced.StreamAsync(q, cts.Token);
         while (await results.MoveNextAsync())
         {
             var id = results.Current.Document.PersistenceId;
-            await Channel.Writer.WriteAsync(id);
+            await Channel.Writer.WriteAsync(id, cts.Token);
             _offset = new ChangeVectorOffset(results.Current.ChangeVector);
         }
     }

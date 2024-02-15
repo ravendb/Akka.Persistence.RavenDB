@@ -11,7 +11,7 @@ namespace Akka.Persistence.RavenDb.Tests.Query
         private readonly IDocumentStore _store;
 
         public RavenDbAllEventsSpec(ITestOutputHelper output, RavenDbFixture databaseFixture) 
-            : base(databaseFixture.CreateSpecConfigAndStore(out var store), "RavenDbAllEventsSpec", output)
+            : base(databaseFixture.CreateSpecConfigAndStore(out var store), nameof(RavenDbAllEventsSpec), output)
         {
             _store = store;
             ReadJournal = Sys.ReadJournalFor<RavenDbReadJournal>(RavenDbReadJournal.Identifier);

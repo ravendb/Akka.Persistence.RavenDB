@@ -24,8 +24,8 @@ public class AllEvents : ContinuousQuery<TimeoutChange>
         using var session = Ravendb.Storage.OpenAsyncSession();
         var q = session.Advanced.AsyncDocumentQuery<Journal.Types.Event>(nameof(Journal.EventsByTagAndChangeVector));
         q = _offset.ApplyOffset(q);
-
-        await using var results = await session.Advanced.StreamAsync(q);
+        using var cts = Ravendb.Storage.GetCancellationTokenSource(useSaveChangesTimeout: false);
+        await using var results = await session.Advanced.StreamAsync(q, cts.Token);
         while (await results.MoveNextAsync())
         {
             var @event = results.Current.Document;
@@ -33,7 +33,7 @@ public class AllEvents : ContinuousQuery<TimeoutChange>
             _offset = new ChangeVectorOffset(results.Current.ChangeVector);
             var e = new EventEnvelope(_offset, @event.PersistenceId, @event.SequenceNr, persistent.Payload,
                 @event.Timestamp, @event.Tags);
-            await Channel.Writer.WriteAsync(e);
+            await Channel.Writer.WriteAsync(e, cts.Token);
         }
     }
 }

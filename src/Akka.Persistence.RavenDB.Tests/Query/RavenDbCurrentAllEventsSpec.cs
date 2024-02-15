@@ -11,7 +11,7 @@ public class RavenDbCurrentAllEventsSpec : CurrentAllEventsSpec, IClassFixture<R
     private readonly IDocumentStore _store;
 
     public RavenDbCurrentAllEventsSpec(ITestOutputHelper output, RavenDbFixture databaseFixture) 
-        : base(databaseFixture.CreateSpecConfigAndStore(out var store), "RavenDbCurrentAllEventsSpec", output)
+        : base(databaseFixture.CreateSpecConfigAndStore(out var store), nameof(RavenDbCurrentAllEventsSpec), output)
     {
         _store = store;
         ReadJournal = Sys.ReadJournalFor<RavenDbReadJournal>(RavenDbReadJournal.Identifier);

@@ -9,7 +9,7 @@ namespace Akka.Persistence.RavenDb.Tests
         protected override bool SupportsRejectingNonSerializableObjects { get; } = false;
 
         public RavenDbJournalSpec(RavenDbFixture database) 
-            : base(database.CreateSpecConfigAndStore(out var store), "RavenDbJournalSpec")
+            : base(database.CreateSpecConfigAndStore(out var store), nameof(RavenDbJournalSpec)) //TODO stav: no output?
         {
             _store = store;
             Initialize();

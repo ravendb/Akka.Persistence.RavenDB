@@ -4,27 +4,11 @@ using Raven.Client.Documents;
 using Raven.Client.Documents.Session;
 using Raven.Client.Http;
 using System.Security.Cryptography.X509Certificates;
+using Akka.Configuration;
 
 namespace Akka.Persistence.RavenDb
 {
-
-    public class JournalRavenDbPersistence : RavenDbPersistence
-    {
-        public JournalRavenDbPersistence(ExtendedActorSystem system) : base(system)
-        {
-           
-        }
-    }
-
-    public class SnapshotRavenDbPersistence : RavenDbPersistence
-    {
-        public SnapshotRavenDbPersistence(ExtendedActorSystem system) : base(system)
-        {
-            
-        }
-    }
-
-    public abstract class RavenDbPersistence : IExtension
+    public class RavenDbPersistence : IExtension
     {
         public IDocumentStore Instance => _instance ??= CreateStore();
         private IDocumentStore _instance;
@@ -34,7 +18,7 @@ namespace Akka.Persistence.RavenDb
         
         public readonly Akka.Serialization.Serialization Serialization;
 
-        protected RavenDbPersistence(ExtendedActorSystem system)
+        public RavenDbPersistence(ExtendedActorSystem system)
         {
             if (system == null)
                 throw new ArgumentNullException(nameof(system));
@@ -64,14 +48,26 @@ namespace Akka.Persistence.RavenDb
             return store;
         }
 
-        //public static Config DefaultConfiguration()
-        //{
-        //    return ConfigurationFactory.FromResource<RavenDbPersistence>("Akka.Persistence.RavenDb.reference.conf");
-        //}
+        public static Config DefaultConfiguration()
+        {
+            return ConfigurationFactory.FromResource<RavenDbPersistence>("Akka.Persistence.RavenDb.reference.conf");
+        }
 
-        public static CancellationTokenSource StopTokenSource = new CancellationTokenSource();
-        public void Stop() => StopTokenSource.Cancel();
-        public static CancellationTokenSource CancellationTokenSource => CancellationTokenSource.CreateLinkedTokenSource(StopTokenSource.Token);
+        private readonly CancellationTokenSource _stopTokenSource = new CancellationTokenSource();
+
+        public void Stop()
+        {
+            _stopTokenSource.Cancel();
+            //TODO stav: should dispose store here?
+        }
+
+        public CancellationTokenSource GetCancellationTokenSource(bool useSaveChangesTimeout)
+        {
+            var cts = CancellationTokenSource.CreateLinkedTokenSource(_stopTokenSource.Token);
+            if(useSaveChangesTimeout)
+                cts.CancelAfter(JournalConfiguration.SaveChangesTimeout);
+            return cts;
+        }
 
         public string GetMetadataId(string persistenceId) => $"{EventsMetadataCollection}/{persistenceId}";
 

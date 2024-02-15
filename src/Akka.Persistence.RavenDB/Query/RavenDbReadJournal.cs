@@ -24,13 +24,13 @@ namespace Akka.Persistence.RavenDb.Query
         /// </summary>
         public const string Identifier = "akka.persistence.query.ravendb";
 
-        public readonly JournalRavenDbPersistence Storage;
+        public readonly RavenDbPersistence Storage;
         private readonly Akka.Serialization.Serialization _serialization;
         
         public RavenDbReadJournal(ExtendedActorSystem system, Config config)
         {
             _serialization = system.Serialization;//TODO move to configuration class?
-            Storage = system.WithExtension<JournalRavenDbPersistence, JournalRavenDbPersistenceProvider>();
+            Storage = system.WithExtension<RavenDbPersistence, RavenDbPersistenceProvider>();
         }
 
         public void PreStart()
@@ -56,11 +56,12 @@ namespace Akka.Persistence.RavenDb.Query
                 try
                 {
                     using var session = Storage.OpenAsyncSession();
-                    await using var results = await session.Advanced.StreamAsync(session.Query<ActorId>());
+                    using var cts = Storage.GetCancellationTokenSource(useSaveChangesTimeout: false);
+                    await using var results = await session.Advanced.StreamAsync(session.Query<ActorId>(), cts.Token);
                     while (await results.MoveNextAsync())
                     {
                         var id = results.Current.Document.PersistenceId;
-                        await currentPersistenceIdsChannel.Writer.WriteAsync(id);
+                        await currentPersistenceIdsChannel.Writer.WriteAsync(id, cts.Token);
                     }
 
                     currentPersistenceIdsChannel.Writer.TryComplete();
@@ -91,11 +92,13 @@ namespace Akka.Persistence.RavenDb.Query
                 try
                 {
                     using var session = Storage.OpenAsyncSession();
+                    using var cts = Storage.GetCancellationTokenSource(useSaveChangesTimeout: false);
                     session.Advanced.SessionInfo.SetContext(persistenceId);
 
                     await using var results = await session.Advanced.StreamAsync<Journal.Types.Event>(
                         startsWith: Storage.GetEventPrefix(persistenceId),
-                        startAfter: Storage.GetSequenceId(persistenceId, fromSequenceNr - 1));
+                        startAfter: Storage.GetSequenceId(persistenceId, fromSequenceNr - 1),
+                        token: cts.Token);
                     while (await results.MoveNextAsync())
                     {
                         var @event = results.Current.Document;
@@ -105,7 +108,7 @@ namespace Akka.Persistence.RavenDb.Query
                         var persistent = Journal.Types.Event.Deserialize(_serialization, @event, ActorRefs.NoSender);
                         var e = new EventEnvelope(new Sequence(@event.Timestamp), @event.PersistenceId,
                             @event.SequenceNr, persistent.Payload, @event.Timestamp, @event.Tags);
-                        await currentEventsByPersistenceIdChannel.Writer.WriteAsync(e);
+                        await currentEventsByPersistenceIdChannel.Writer.WriteAsync(e, cts.Token);
                     }
 
                     currentEventsByPersistenceIdChannel.Writer.TryComplete();
@@ -141,13 +144,14 @@ namespace Akka.Persistence.RavenDb.Query
                     var q = session.Advanced.AsyncDocumentQuery<Journal.Types.Event>(nameof(EventsByTagAndChangeVector)).ContainsAny(e => e.Tags, new[] { tag });
                     q = ChangeVectorOffset.Convert(offset).ApplyOffset(q);
 
-                    await using var results = await session.Advanced.StreamAsync(q);
+                    using var cts = Storage.GetCancellationTokenSource(useSaveChangesTimeout: false);
+                    await using var results = await session.Advanced.StreamAsync(q, cts.Token);
                     while (await results.MoveNextAsync())
                     {
                         var @event = results.Current.Document;
                         var persistent = Journal.Types.Event.Deserialize(_serialization, @event, ActorRefs.NoSender);
                         var e = new EventEnvelope(new ChangeVectorOffset(results.Current.ChangeVector), @event.PersistenceId, @event.SequenceNr, persistent.Payload, @event.Timestamp, @event.Tags);
-                        await currentEventsByTag.Writer.WriteAsync(e);
+                        await currentEventsByTag.Writer.WriteAsync(e, cts.Token);
                     }
 
                     currentEventsByTag.Writer.TryComplete();
@@ -181,13 +185,14 @@ namespace Akka.Persistence.RavenDb.Query
                     var q = session.Advanced.AsyncDocumentQuery<Journal.Types.Event>(indexName: nameof(EventsByTagAndChangeVector));
                     q = ChangeVectorOffset.Convert(offset).ApplyOffset(q);
 
-                    await using var results = await session.Advanced.StreamAsync(q);
+                    using var cts = Storage.GetCancellationTokenSource(useSaveChangesTimeout: false);
+                    await using var results = await session.Advanced.StreamAsync(q, cts.Token);
                     while (await results.MoveNextAsync())
                     {
                         var @event = results.Current.Document;
                         var persistent = Journal.Types.Event.Deserialize(_serialization, @event, ActorRefs.NoSender);
                         var e = new EventEnvelope(new ChangeVectorOffset(results.Current.ChangeVector), @event.PersistenceId, @event.SequenceNr, persistent.Payload, @event.Timestamp, @event.Tags);
-                        await currentAllEvents.Writer.WriteAsync(e);
+                        await currentAllEvents.Writer.WriteAsync(e, cts.Token);
                     }
 
                     currentAllEvents.Writer.TryComplete();

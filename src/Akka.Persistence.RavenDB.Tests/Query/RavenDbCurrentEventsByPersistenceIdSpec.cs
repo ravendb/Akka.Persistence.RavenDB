@@ -11,7 +11,7 @@ public class RavenDbCurrentEventsByPersistenceIdSpec : CurrentEventsByPersistenc
     private readonly IDocumentStore _store;
 
     public RavenDbCurrentEventsByPersistenceIdSpec(ITestOutputHelper output, RavenDbFixture databaseFixture) 
-        : base(databaseFixture.CreateSpecConfigAndStore(out var store), "RavenDbCurrentEventsByPersistenceIdSpec", output)
+        : base(databaseFixture.CreateSpecConfigAndStore(out var store), nameof(RavenDbCurrentEventsByPersistenceIdSpec), output)
     {
         _store = store;
         ReadJournal = Sys.ReadJournalFor<RavenDbReadJournal>(RavenDbReadJournal.Identifier);

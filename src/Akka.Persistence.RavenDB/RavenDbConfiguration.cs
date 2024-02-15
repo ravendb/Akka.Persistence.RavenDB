@@ -12,9 +12,9 @@ namespace Akka.Persistence.RavenDb
         public readonly X509Certificate2 Certificate;
         public readonly Version? HttpVersion;
         public readonly bool? DisableTcpCompression;
-        public readonly TimeSpan? RequestTimeout;
+        public readonly TimeSpan SaveChangesTimeout;
         public readonly bool WaitForNonStale;
-        
+        //TODO stav: currently impossible to change timeout of stream (only save-changes timeout). Should add support for this?
 
         public RavenDbConfiguration(Config config)
         {
@@ -33,23 +33,13 @@ namespace Akka.Persistence.RavenDb
             var httpVersion = config.GetString("http-version");
             if (string.IsNullOrEmpty(httpVersion) == false)
             {
-                try
-                {
-                    HttpVersion = Version.Parse(httpVersion);
-                }
-                catch (Exception e)
-                {
-                    throw new InvalidOperationException(
-                        $"Could not parse 'http-version' configuration parameter value '{httpVersion}'.", e);
-                    //TODO stav: error doesn't bubble up when running test - only shows when debugging
-                }
+                //TODO stav: error gets swallowed in akka and doesn't bubble up
+                HttpVersion = Version.Parse(httpVersion);
             }
-            //TODO should use defaults from the document conventions?
-            DisableTcpCompression = config.GetBoolean("disable-tcp-compression");
-            RequestTimeout = config.GetTimeSpan("request-timeout"); //example 20s
-            WaitForNonStale = config.GetBoolean("wait-for-non-stale");
             
-            //TODO stav: what about global-http-timeout
+            DisableTcpCompression = config.GetBoolean("disable-tcp-compression");
+            SaveChangesTimeout = config.GetTimeSpan("save-changes-timeout", TimeSpan.FromSeconds(15));
+            WaitForNonStale = config.GetBoolean("wait-for-non-stale");
         }
 
         public DocumentConventions ToDocumentConventions()
@@ -58,9 +48,7 @@ namespace Akka.Persistence.RavenDb
 
             conventions.HttpVersion = HttpVersion ?? conventions.HttpVersion;
             conventions.DisableTcpCompression = DisableTcpCompression ?? conventions.DisableTcpCompression;
-            conventions.RequestTimeout = RequestTimeout == TimeSpan.Zero ? conventions.RequestTimeout : RequestTimeout;
-            //conventions.Serialization = 
-
+            
             return conventions;
         }
     }
@@ -79,10 +67,8 @@ namespace Akka.Persistence.RavenDb
 
         public RavenDbQueryConfiguration(Config config)
         {
-            RefreshInterval = config.GetTimeSpan("request-timeout", @default: TimeSpan.FromSeconds(5));
-            MaxBufferSize = config.GetInt("max-buffer-size");
-            if (MaxBufferSize == 0)
-                MaxBufferSize = 64 * 1024;
+            RefreshInterval = config.GetTimeSpan("refresh-interval", @default: TimeSpan.FromSeconds(3));
+            MaxBufferSize = config.GetInt("max-buffer-size", @default: 64 * 1024);
         }
     }
 

@@ -13,7 +13,7 @@ public class RavenDbCurrentEventsByTagSpec : CurrentEventsByTagSpec, IClassFixtu
     private readonly IDocumentStore _store;
 
     public RavenDbCurrentEventsByTagSpec(ITestOutputHelper output, RavenDbFixture databaseFixture) 
-        : base(databaseFixture.CreateSpecConfigAndStore(out var store), "RavenDbCurrentEventsByTagSpec", output)
+        : base(databaseFixture.CreateSpecConfigAndStore(out var store), nameof(RavenDbCurrentEventsByTagSpec), output)
     {
         _store = store;
         ReadJournal = Sys.ReadJournalFor<RavenDbReadJournal>(RavenDbReadJournal.Identifier);

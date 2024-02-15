@@ -8,9 +8,9 @@ namespace Akka.Persistence.RavenDb.Tests.Query;
 
 public class RavenDbPersistenceIdsSpec : PersistenceIdsSpec, IClassFixture<RavenDbFixture>
 {
-    private IDocumentStore _store;
+    private readonly IDocumentStore _store;
     public RavenDbPersistenceIdsSpec(ITestOutputHelper output, RavenDbFixture databaseFixture) 
-        : base(databaseFixture.CreateSpecConfigAndStore(out var store), $"RavenDbPersistenceIdsSpec", output)
+        : base(databaseFixture.CreateSpecConfigAndStore(out var store), nameof(RavenDbPersistenceIdsSpec), output)
     {
         _store = store;
         ReadJournal = Sys.ReadJournalFor<RavenDbReadJournal>(RavenDbReadJournal.Identifier);

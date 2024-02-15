@@ -10,7 +10,7 @@ public class RavenDbCurrentPersistenceIdsSpec : CurrentPersistenceIdsSpec, IClas
 {
     private IDocumentStore _store;
     public RavenDbCurrentPersistenceIdsSpec(ITestOutputHelper output, RavenDbFixture databaseFixture) 
-        : base(databaseFixture.CreateSpecConfigAndStore(out var store), $"RavenDbPersistenceIdsSpec", output)
+        : base(databaseFixture.CreateSpecConfigAndStore(out var store), nameof(RavenDbCurrentPersistenceIdsSpec), output)
     {
         _store = store;
         ReadJournal = Sys.ReadJournalFor<RavenDbReadJournal>(RavenDbReadJournal.Identifier);

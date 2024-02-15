@@ -1,6 +1,4 @@
 ﻿using Akka.Actor;
-using Akka.Configuration;
-using Akka.Persistence.RavenDb;
 using Akka.Persistence.Snapshot;
 using Akka.Serialization;
 using Akka.Util;
@@ -9,20 +7,26 @@ namespace Akka.Persistence.RavenDb.Snapshot
 {
     public class RavenDbSnapshotStore : SnapshotStore
     {
-        private readonly SnapshotRavenDbPersistence _storage;
+        private readonly RavenDbPersistence _storage;
         private readonly Akka.Serialization.Serialization _serialization;
 
         public RavenDbSnapshotStore()
         {
-            _storage = Context.System.WithExtension<SnapshotRavenDbPersistence, SnapshotRavenDbPersistenceProvider>();
+            _storage = Context.System.WithExtension<RavenDbPersistence, RavenDbPersistenceProvider>();
             _serialization = Context.System.Serialization;
+        }
+
+        protected override void PostStop()
+        {
+            _storage.Stop();
+            base.PostStop();
         }
 
         protected override async Task<SelectedSnapshot> LoadAsync(string persistenceId, SnapshotSelectionCriteria criteria)
         {
             // TODO: add API to scan backwards
             using var session = _storage.OpenAsyncSession();
-            using var cts = RavenDbPersistence.CancellationTokenSource;
+            using var cts = _storage.GetCancellationTokenSource(useSaveChangesTimeout: false);
             session.Advanced.SessionInfo.SetContext(persistenceId);
 
             await using var results = await session.Advanced.StreamAsync<Snapshot>(startsWith: GetSnapshotPrefix(persistenceId), startAfter: GetSnapshotId(persistenceId, criteria.MinSequenceNr - 1), token: cts.Token);
@@ -73,7 +77,7 @@ namespace Akka.Persistence.RavenDb.Snapshot
             using var stream = new MemoryStream(bytes);
 
             using var session = _storage.OpenAsyncSession();
-            using var cts = RavenDbPersistence.CancellationTokenSource;
+            using var cts = _storage.GetCancellationTokenSource(useSaveChangesTimeout: true);
             await session.StoreAsync(new Snapshot
             {
                 PersistenceId = metadata.PersistenceId,
@@ -91,16 +95,17 @@ namespace Akka.Persistence.RavenDb.Snapshot
             var id = GetSnapshotId(metadata);
             using var session = _storage.OpenAsyncSession();
             session.Advanced.SessionInfo.SetContext(metadata.PersistenceId);
-            using var cts = RavenDbPersistence.CancellationTokenSource;
+            using var cts = _storage.GetCancellationTokenSource(useSaveChangesTimeout: true);
             session.Delete(id);
             await session.SaveChangesAsync(cts.Token);
         }
 
+        //TODO stav: some methods have both streaming and saving on same cts - separate?
         protected override async Task DeleteAsync(string persistenceId, SnapshotSelectionCriteria criteria)
         {
             //TODO delete by prefix (upto)
             using var session = _storage.OpenAsyncSession();
-            using var cts = RavenDbPersistence.CancellationTokenSource;
+            using var cts = _storage.GetCancellationTokenSource(useSaveChangesTimeout: false);
             session.Advanced.SessionInfo.SetContext(persistenceId);
 
             await using var results = await session.Advanced.StreamAsync<SnapshotMetadata>(startsWith: GetSnapshotPrefix(persistenceId), startAfter: GetSnapshotId(persistenceId, criteria.MinSequenceNr - 1), token: cts.Token);

@@ -12,7 +12,7 @@ namespace Akka.Persistence.RavenDb.Tests.Query
         protected override bool SupportsTagsInEventEnvelope => true;
 
         public RavenDbEventsByTagSpec(ITestOutputHelper output, RavenDbFixture database)
-            : base(database.CreateSpecConfigAndStore(out var store), "RavenDbCurrentEventsByTagSpec", output)
+            : base(database.CreateSpecConfigAndStore(out var store), nameof(RavenDbEventsByTagSpec), output)
         {
             _store = store;
             ReadJournal = Sys.ReadJournalFor<RavenDbReadJournal>(RavenDbReadJournal.Identifier);
