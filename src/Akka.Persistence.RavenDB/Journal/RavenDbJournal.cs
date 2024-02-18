@@ -145,7 +145,7 @@ namespace Akka.Persistence.RavenDb.Journal
                 }
             }));
 
-            if (_storage.JournalConfiguration.WaitForNonStale) // used for tests
+            if (_storage.QueryConfiguration.WaitForNonStale) // used for tests
                 session.Advanced.WaitForIndexesAfterSaveChanges();
             
             await session.SaveChangesAsync(cts.Token);

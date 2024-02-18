@@ -13,7 +13,7 @@ namespace Akka.Persistence.RavenDb
         public readonly Version? HttpVersion;
         public readonly bool? DisableTcpCompression;
         public readonly TimeSpan SaveChangesTimeout;
-        public readonly bool WaitForNonStale;
+        
         //TODO stav: currently impossible to change timeout of stream (only save-changes timeout). Should add support for this?
 
         public RavenDbConfiguration(Config config)
@@ -39,7 +39,6 @@ namespace Akka.Persistence.RavenDb
             
             DisableTcpCompression = config.GetBoolean("disable-tcp-compression");
             SaveChangesTimeout = config.GetTimeSpan("save-changes-timeout", TimeSpan.FromSeconds(15));
-            WaitForNonStale = config.GetBoolean("wait-for-non-stale");
         }
 
         public DocumentConventions ToDocumentConventions()
@@ -64,11 +63,13 @@ namespace Akka.Persistence.RavenDb
     {
         public readonly TimeSpan RefreshInterval;
         public readonly int MaxBufferSize;
+        public readonly bool WaitForNonStale;
 
         public RavenDbQueryConfiguration(Config config)
         {
             RefreshInterval = config.GetTimeSpan("refresh-interval", @default: TimeSpan.FromSeconds(3));
             MaxBufferSize = config.GetInt("max-buffer-size", @default: 64 * 1024);
+            WaitForNonStale = config.GetBoolean("wait-for-non-stale");
         }
     }
 
