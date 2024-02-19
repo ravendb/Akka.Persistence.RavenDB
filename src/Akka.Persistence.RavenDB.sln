@@ -7,6 +7,8 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Akka.Persistence.RavenDb", 
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Akka.Persistence.RavenDb.Tests", "Akka.Persistence.RavenDb.Tests\Akka.Persistence.RavenDb.Tests.csproj", "{A536E90C-D20C-43C6-A45C-0F082F738128}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Akka.Persistence.RavenDb.Hosting", "Akka.Persistence.RavenDb.Hosting\Akka.Persistence.RavenDb.Hosting.csproj", "{3E0BA870-9491-4859-9E6C-83A1B3E147C2}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -21,6 +23,10 @@ Global
 		{A536E90C-D20C-43C6-A45C-0F082F738128}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{A536E90C-D20C-43C6-A45C-0F082F738128}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{A536E90C-D20C-43C6-A45C-0F082F738128}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3E0BA870-9491-4859-9E6C-83A1B3E147C2}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3E0BA870-9491-4859-9E6C-83A1B3E147C2}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3E0BA870-9491-4859-9E6C-83A1B3E147C2}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3E0BA870-9491-4859-9E6C-83A1B3E147C2}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

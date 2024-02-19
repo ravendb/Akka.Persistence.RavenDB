@@ -23,8 +23,8 @@ namespace Akka.Persistence.RavenDb
             if (system == null)
                 throw new ArgumentNullException(nameof(system));
 
-            JournalConfiguration = new RavenDbJournalConfiguration(system.Settings.Config.GetConfig("akka.persistence.journal.ravendb"));
-            QueryConfiguration = new RavenDbQueryConfiguration(system.Settings.Config.GetConfig("akka.persistence.query.ravendb"));
+            JournalConfiguration = new RavenDbJournalConfiguration(system.Settings.Config.GetConfig(RavenDbJournalConfiguration.Identifier));
+            QueryConfiguration = new RavenDbQueryConfiguration(system.Settings.Config.GetConfig(RavenDbQueryConfiguration.Identifier));
 
             Serialization = system.Serialization;
         }

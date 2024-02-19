@@ -9,7 +9,7 @@ namespace Akka.Persistence.RavenDb
         public readonly string Name;
         public readonly string[] Urls;
         public readonly string? CertificatePath;
-        public readonly X509Certificate2 Certificate;
+        public readonly X509Certificate2 Certificate; //TODO stav: delete this and only rely on path?
         public readonly Version? HttpVersion;
         public readonly bool? DisableTcpCompression;
         public readonly TimeSpan SaveChangesTimeout;
@@ -20,7 +20,7 @@ namespace Akka.Persistence.RavenDb
         {
             Name = config.GetString("name") ?? throw new ArgumentException("name must be provided");
             Urls = config.GetStringList("urls")?.ToArray() ?? throw new ArgumentException("urls must be provided");
-            CertificatePath = config.GetString("cert");
+            CertificatePath = config.GetString("certificate-path");
 
             //TODO DisposeCertificate in DocumentConventions
             
@@ -54,6 +54,7 @@ namespace Akka.Persistence.RavenDb
 
     public class RavenDbJournalConfiguration : RavenDbConfiguration
     {
+        public const string Identifier = "akka.persistence.journal.ravendb";
         public RavenDbJournalConfiguration(Config config) : base(config)
         {
         }
@@ -61,6 +62,8 @@ namespace Akka.Persistence.RavenDb
 
     public class RavenDbQueryConfiguration
     {
+        public const string Identifier = "akka.persistence.query.ravendb";
+
         public readonly TimeSpan RefreshInterval;
         public readonly int MaxBufferSize;
         public readonly bool WaitForNonStale;
@@ -75,6 +78,8 @@ namespace Akka.Persistence.RavenDb
 
     public class RavenDbSnapshotConfiguration
     {
+        public const string Identifier = "akka.persistence.snapshot.ravendb";
+
         public RavenDbSnapshotConfiguration(Config config)
         {
         }
