@@ -20,18 +20,18 @@ public class EventsByPersistenceId : ContinuousQuery<DocumentChange>
 
     protected override IChangesObservable<DocumentChange> Subscribe(IDatabaseChanges changes)
     {
-        var prefix = Ravendb.Storage.GetEventPrefix(_persistenceId);
+        var prefix = Ravendb.Store.GetEventPrefix(_persistenceId);
         return changes.ForDocumentsStartingWith(prefix);
     }
 
     protected override async Task Query()
     {
-        using var session = Ravendb.Storage.OpenAsyncSession();
+        using var session = Ravendb.Store.Instance.OpenAsyncSession();
         session.Advanced.SessionInfo.SetContext(_persistenceId);
 
-        using var cts = Ravendb.Storage.GetCancellationTokenSource(useSaveChangesTimeout: false);
-        await using var results = await session.Advanced.StreamAsync<Journal.Types.Event>(startsWith: Ravendb.Storage.GetEventPrefix(_persistenceId),
-            startAfter: Ravendb.Storage.GetSequenceId(_persistenceId, _fromSequenceNr), token: cts.Token);
+        using var cts = Ravendb.Store.GetCancellationTokenSource(useSaveChangesTimeout: false);
+        await using var results = await session.Advanced.StreamAsync<Journal.Types.Event>(startsWith: Ravendb.Store.GetEventPrefix(_persistenceId),
+            startAfter: Ravendb.Store.GetSequenceId(_persistenceId, _fromSequenceNr), token: cts.Token);
         while (await results.MoveNextAsync())
         {
             var @event = results.Current.Document;

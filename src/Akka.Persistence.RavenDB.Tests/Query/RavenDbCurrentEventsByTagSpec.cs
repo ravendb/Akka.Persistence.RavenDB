@@ -1,8 +1,6 @@
-﻿using Akka.Actor;
-using Akka.Persistence.Query;
+﻿using Akka.Persistence.Query;
 using Akka.Persistence.RavenDb.Query;
 using Akka.Persistence.TCK.Query;
-using Raven.Client.Documents;
 using Xunit.Abstractions;
 
 namespace Akka.Persistence.RavenDb.Tests.Query;
@@ -10,18 +8,19 @@ namespace Akka.Persistence.RavenDb.Tests.Query;
 public class RavenDbCurrentEventsByTagSpec : CurrentEventsByTagSpec, IClassFixture<RavenDbFixture>
 {
     protected override bool SupportsTagsInEventEnvelope => true;
-    private readonly IDocumentStore _store;
-
+    private readonly string _databaseName;
+    
     public RavenDbCurrentEventsByTagSpec(ITestOutputHelper output, RavenDbFixture databaseFixture) 
-        : base(databaseFixture.CreateSpecConfigAndStore(out var store), nameof(RavenDbCurrentEventsByTagSpec), output)
+        : base(databaseFixture.CreateSpecConfigAndStore(nameof(RavenDbCurrentEventsByTagSpec), out var databaseName), nameof(RavenDbCurrentEventsByTagSpec), output)
     {
-        _store = store;
+        _databaseName = databaseName;
         ReadJournal = Sys.ReadJournalFor<RavenDbReadJournal>(RavenDbReadJournal.Identifier);
+        output.WriteLine(databaseName);
     }
 
     protected override void Dispose(bool disposing)
     {
-        _store.Dispose();
         base.Dispose(disposing);
+        TestDriverExtension.DeleteDatabase(_databaseName);
     }
 }

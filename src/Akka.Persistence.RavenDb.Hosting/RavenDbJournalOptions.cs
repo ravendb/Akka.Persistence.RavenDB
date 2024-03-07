@@ -29,8 +29,6 @@ namespace Akka.Persistence.RavenDb.Hosting
         public override string Identifier { get; set; }
         protected override Config InternalDefaultConfig { get; } = Default;
 
-        //TODO stav: there is an option to override isolation level
-
         protected override StringBuilder Build(StringBuilder sb)
         {
             sb.AppendLine($"name = {Name.ToHocon()}");
@@ -41,13 +39,13 @@ namespace Akka.Persistence.RavenDb.Hosting
                 sb.AppendLine($"certificate-path = {CertificatePath.ToHocon()}");
 
             if (HttpVersion is not null)
-                sb.AppendLine($"http-version = {HttpVersion.ToString().ToHocon()}"); //TODO stav: check if works
+                sb.AppendLine($"http-version = {HttpVersion.ToString().ToHocon()}");
 
             if (DisableTcpCompression is not null)
                 sb.AppendLine($"disable-tcp-compression = {DisableTcpCompression.ToHocon()}");
 
             if (SaveChangesTimeout is not null)
-                sb.AppendLine($"save-changes-timeout = {SaveChangesTimeout.ToHocon(allowInfinite: true)}"); //TODO stav: zeroIsInfinite?
+                sb.AppendLine($"save-changes-timeout = {SaveChangesTimeout.ToHocon(allowInfinite: true, zeroIsInfinite: true)}");
 
             return base.Build(sb);
         }

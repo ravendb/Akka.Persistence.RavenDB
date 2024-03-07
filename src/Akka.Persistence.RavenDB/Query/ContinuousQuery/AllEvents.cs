@@ -21,10 +21,10 @@ public class AllEvents : ContinuousQuery<TimeoutChange>
 
     protected override async Task Query()
     {
-        using var session = Ravendb.Storage.OpenAsyncSession();
+        using var session = Ravendb.Store.Instance.OpenAsyncSession();
         var q = session.Advanced.AsyncDocumentQuery<Journal.Types.Event>(nameof(Journal.EventsByTagAndChangeVector));
         q = _offset.ApplyOffset(q);
-        using var cts = Ravendb.Storage.GetCancellationTokenSource(useSaveChangesTimeout: false);
+        using var cts = Ravendb.Store.GetCancellationTokenSource(useSaveChangesTimeout: false);
         await using var results = await session.Advanced.StreamAsync(q, cts.Token);
         while (await results.MoveNextAsync())
         {

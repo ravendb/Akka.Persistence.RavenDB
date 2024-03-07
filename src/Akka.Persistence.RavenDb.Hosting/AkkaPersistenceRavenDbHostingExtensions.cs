@@ -6,7 +6,6 @@ namespace Akka.Persistence.RavenDb.Hosting
 {
     public static class AkkaPersistenceRavenDbHostingExtensions
     {
-        //TODO stav: why do the others have more dependencies? may be necessary for production
         /// <summary>
         ///     Adds Akka.Persistence.RavenDb support to this <see cref="ActorSystem"/>.
         /// </summary>
@@ -18,11 +17,12 @@ namespace Akka.Persistence.RavenDb.Hosting
         /// </param>
         /// <param name="autoInitialize">
         ///     <para>
-        ///         Should the RavenDb database be initialized automatically.
+        ///         Should the RavenDb database be created automatically.
+        ///         If the database already exists, will do nothing.
         ///     </para>
         ///     <i>Default</i>: <c>true</c>
         /// </param>
-        /// <param name="databaseName"> //TODO stav: what does this do? how is it supposed to work?
+        /// <param name="databaseName">
         ///     The name of the database where the persistence data should be stored
         /// </param>
         /// <param name="certificatePath">
@@ -74,10 +74,6 @@ namespace Akka.Persistence.RavenDb.Hosting
             if (mode == PersistenceMode.SnapshotStore && journalBuilder is { })
                 throw new Exception($"{nameof(journalBuilder)} can only be set when {nameof(mode)} is set to either {PersistenceMode.Both} or {PersistenceMode.Journal}");
 
-            //TODO stav: what if no journal mode? we need basic conn settings
-            //TODO stav: seems like snapshot options are expected to have connection options for a separate independent store
-            //TODO stav: there is no place to fill in query options? is probably meant to be default?
-
             var journalOpt = new RavenDbJournalOptions(isDefaultPlugin, pluginIdentifier)
             {
                 Urls = urls,
@@ -90,8 +86,12 @@ namespace Akka.Persistence.RavenDb.Hosting
             journalBuilder?.Invoke(adapters);
             journalOpt.Adapters = adapters;
 
+            //TODO stav: where are the rest of the options set? where can we change query options?
             var snapshotOpt = new RavenDbSnapshotOptions(isDefaultPlugin, pluginIdentifier)
             {
+                Urls = urls,
+                Name = databaseName,
+                CertificatePath = certificatePath,
                 AutoInitialize = autoInitialize,
             };
             
@@ -195,7 +195,7 @@ namespace Akka.Persistence.RavenDb.Hosting
         {
             if (journalOptions is null && snapshotOptions is null)
                 throw new ArgumentException($"{nameof(journalOptions)} and {nameof(snapshotOptions)} could not both be null");
-
+            
             return (journalOptions, snapshotOptions) switch
             {
                 (null, null) =>
@@ -204,7 +204,8 @@ namespace Akka.Persistence.RavenDb.Hosting
                 (_, null) =>
                     builder
                         .AddHocon(journalOptions.ToConfig(), HoconAddMode.Prepend)
-                        .AddHocon(journalOptions.DefaultConfig, HoconAddMode.Append),
+                        .AddHocon(journalOptions.DefaultConfig, HoconAddMode.Append)
+                        .AddHocon(RavenDbPersistence.DefaultConfiguration(), HoconAddMode.Append),
 
                 (null, _) =>
                     builder
@@ -216,7 +217,8 @@ namespace Akka.Persistence.RavenDb.Hosting
                         .AddHocon(journalOptions.ToConfig(), HoconAddMode.Prepend)
                         .AddHocon(snapshotOptions.ToConfig(), HoconAddMode.Prepend)
                         .AddHocon(journalOptions.DefaultConfig, HoconAddMode.Append)
-                        .AddHocon(snapshotOptions.DefaultConfig, HoconAddMode.Append),
+                        .AddHocon(snapshotOptions.DefaultConfig, HoconAddMode.Append)
+                        .AddHocon(RavenDbPersistence.DefaultConfiguration(), HoconAddMode.Append),
             };
         }
     }

@@ -1,28 +1,23 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using Akka.Persistence.TCK.Snapshot;
-using Raven.Client.Documents;
+﻿using Akka.Persistence.TCK.Snapshot;
+using Xunit.Abstractions;
 
 namespace Akka.Persistence.RavenDb.Tests
 {
     public class RavenDbSnapshotStoreSpec : SnapshotStoreSpec, IClassFixture<RavenDbFixture>
     {
-        private readonly IDocumentStore _store;
+        private readonly string _databaseName;
 
-        public RavenDbSnapshotStoreSpec(RavenDbFixture database) 
-            : base(database.CreateSpecConfigAndStore(out var store), nameof(RavenDbSnapshotStoreSpec)) //TODO stav: no output?
+        public RavenDbSnapshotStoreSpec(ITestOutputHelper output, RavenDbFixture database) 
+            : base(database.CreateSpecConfigAndStore(nameof(RavenDbSnapshotStoreSpec), out var databaseName), nameof(RavenDbSnapshotStoreSpec), output)
         {
-            _store = store;
+            _databaseName = databaseName;
             Initialize();
         }
 
         protected override void Dispose(bool disposing)
         {
-            _store.Dispose();
             base.Dispose(disposing);
+            TestDriverExtension.DeleteDatabase(_databaseName);
         }
     }
 }

@@ -30,8 +30,8 @@ public class EventsByTag : ContinuousQuery<TimeoutChange>
         var databaseChangeVector = ChangeVectorAnalyzer.ToList(stats.DatabaseChangeVector);
         */
 
-        using var session = Ravendb.Storage.OpenAsyncSession();
-        using var cts = Ravendb.Storage.GetCancellationTokenSource(useSaveChangesTimeout: false);
+        using var session = Ravendb.Store.Instance.OpenAsyncSession();
+        using var cts = Ravendb.Store.GetCancellationTokenSource(useSaveChangesTimeout: false);
         session.Advanced.SessionInfo.SetContext(_tag);
 
         var q = session.Advanced.AsyncDocumentQuery<Journal.Types.Event>(nameof(EventsByTagAndChangeVector)).ContainsAny(e => e.Tags, new[] { _tag });

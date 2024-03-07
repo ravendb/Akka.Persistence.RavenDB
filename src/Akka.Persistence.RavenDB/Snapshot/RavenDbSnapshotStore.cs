@@ -1,32 +1,98 @@
 ﻿using Akka.Actor;
+using Akka.Configuration;
 using Akka.Persistence.Snapshot;
 using Akka.Serialization;
 using Akka.Util;
 
 namespace Akka.Persistence.RavenDb.Snapshot
 {
-    public class RavenDbSnapshotStore : SnapshotStore
+    public class RavenDbSnapshotStore : SnapshotStore, IWithUnboundedStash
     {
-        private readonly RavenDbPersistence _storage;
+        private readonly RavenDbSnapshotConfiguration _configuration;
         private readonly Akka.Serialization.Serialization _serialization;
+        private readonly RavenDbStore _store;
+        private readonly IActorRef _journalRef;
 
-        public RavenDbSnapshotStore()
+        public RavenDbSnapshotStore() : this(RavenDbPersistence.Get(Context.System).SnapshotConfiguration)
         {
-            _storage = Context.System.WithExtension<RavenDbPersistence, RavenDbPersistenceProvider>();
+        }
+
+        public RavenDbSnapshotStore(Config config) : this(new RavenDbSnapshotConfiguration(config))
+        {
+        }
+
+        public RavenDbSnapshotStore(RavenDbSnapshotConfiguration configuration)
+        {
+            _configuration = configuration;
             _serialization = Context.System.Serialization;
+            _journalRef = Persistence.Instance.Apply(Context.System).JournalFor("");
+            _store ??= new RavenDbStore(_configuration);
+        }
+
+        public async Task<object> Initialize()
+        {
+            if (_configuration.AutoInitialize)
+            {
+                return await _store.CreateDatabaseAsync();
+            }
+            
+            return new Status.Success(NotUsed.Instance);
+        }
+
+        protected override void PreStart()
+        {
+            base.PreStart();
+
+            // Call the Initialize method and pipe the result back to signal that
+            // database schemas are ready to use, if it needs to be initialized
+            Initialize().PipeTo(Self);
+
+            // WaitingForInitialization receive handler will wait for a success/fail
+            // result back from the Initialize method
+            BecomeStacked(WaitingForInitialization);
+        }
+
+        public IStash Stash { get; set; }
+
+        private bool WaitingForInitialization(object message)
+        {
+            switch (message)
+            {
+                // Tables are already created or successfully created all needed tables
+                case Status.Success _:
+                    UnbecomeStacked();
+                    // Unstash all messages received when we were initializing our tables
+                    Stash.UnstashAll();
+                    break;
+
+                case Status.Failure fail:
+                    // Failed creating tables. Log an error and stop the actor.
+                    //_log.Error(fail.Cause, "Failure during {0} initialization.", Self);
+                    File.AppendAllText(@"C:\\Work\\Akka\\testLogs.txt", $"\n\n(snapshot Stopping actor) {_configuration.Name}:\n. failure during {Self} initialization.\n {fail.Cause}");
+                    Context.Stop(Self);
+                    break;
+
+                default:
+                    // By default, stash all received messages while we're waiting for the
+                    // Initialize method.
+                    Stash.Stash();
+                    break;
+            }
+            return true;
         }
 
         protected override void PostStop()
         {
-            _storage.Stop();
+            _store.Stop();
+            _store.Dispose();
             base.PostStop();
         }
 
         protected override async Task<SelectedSnapshot> LoadAsync(string persistenceId, SnapshotSelectionCriteria criteria)
         {
             // TODO: add API to scan backwards
-            using var session = _storage.OpenAsyncSession();
-            using var cts = _storage.GetCancellationTokenSource(useSaveChangesTimeout: false);
+            using var session = _store.Instance.OpenAsyncSession();
+            using var cts = _store.GetCancellationTokenSource(useSaveChangesTimeout: false);
             session.Advanced.SessionInfo.SetContext(persistenceId);
 
             await using var results = await session.Advanced.StreamAsync<Snapshot>(startsWith: GetSnapshotPrefix(persistenceId), startAfter: GetSnapshotId(persistenceId, criteria.MinSequenceNr - 1), token: cts.Token);
@@ -76,8 +142,8 @@ namespace Akka.Persistence.RavenDb.Snapshot
 
             using var stream = new MemoryStream(bytes);
 
-            using var session = _storage.OpenAsyncSession();
-            using var cts = _storage.GetCancellationTokenSource(useSaveChangesTimeout: true);
+            using var session = _store.Instance.OpenAsyncSession();
+            using var cts = _store.GetCancellationTokenSource(useSaveChangesTimeout: true);
             await session.StoreAsync(new Snapshot
             {
                 PersistenceId = metadata.PersistenceId,
@@ -93,9 +159,9 @@ namespace Akka.Persistence.RavenDb.Snapshot
         protected override async Task DeleteAsync(SnapshotMetadata metadata)
         {
             var id = GetSnapshotId(metadata);
-            using var session = _storage.OpenAsyncSession();
+            using var session = _store.Instance.OpenAsyncSession();
             session.Advanced.SessionInfo.SetContext(metadata.PersistenceId);
-            using var cts = _storage.GetCancellationTokenSource(useSaveChangesTimeout: true);
+            using var cts = _store.GetCancellationTokenSource(useSaveChangesTimeout: true);
             session.Delete(id);
             await session.SaveChangesAsync(cts.Token);
         }
@@ -104,8 +170,8 @@ namespace Akka.Persistence.RavenDb.Snapshot
         protected override async Task DeleteAsync(string persistenceId, SnapshotSelectionCriteria criteria)
         {
             //TODO delete by prefix (upto)
-            using var session = _storage.OpenAsyncSession();
-            using var cts = _storage.GetCancellationTokenSource(useSaveChangesTimeout: false);
+            using var session = _store.Instance.OpenAsyncSession();
+            using var cts = _store.GetCancellationTokenSource(useSaveChangesTimeout: false);
             session.Advanced.SessionInfo.SetContext(persistenceId);
 
             await using var results = await session.Advanced.StreamAsync<SnapshotMetadata>(startsWith: GetSnapshotPrefix(persistenceId), startAfter: GetSnapshotId(persistenceId, criteria.MinSequenceNr - 1), token: cts.Token);
