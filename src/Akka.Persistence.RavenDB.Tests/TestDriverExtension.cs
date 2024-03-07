@@ -31,7 +31,7 @@ namespace Akka.Persistence.RavenDb.Tests
             }
             catch (Exception e)
             {
-                File.AppendAllText(@"C:\\Work\\Akka\\testLogs.txt", $"\n\nAkka DeleteDatabase: {databaseName}:\n{e.ToString()}");
+                //TODO stav: log this
             }
         }
     }

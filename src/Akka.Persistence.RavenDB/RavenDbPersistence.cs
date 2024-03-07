@@ -1,7 +1,9 @@
 ﻿using Akka.Actor;
 using Akka.Configuration;
+using Akka.Persistence.RavenDb.Journal;
 using Akka.Persistence.RavenDb.Journal.Types;
 using Raven.Client.Documents;
+using Raven.Client.Documents.Operations.Indexes;
 using Raven.Client.Exceptions;
 using Raven.Client.Exceptions.Database;
 using Raven.Client.Http;
@@ -51,8 +53,6 @@ namespace Akka.Persistence.RavenDb
 
         public void Stop()
         {
-            File.AppendAllText(@"C:\\Work\\Akka\\testLogs.txt",
-                $"\n\n(Stop cts) {Configuration.Name}:\n {Environment.StackTrace}");
             _stopTokenSource.Cancel();
         }
 
@@ -93,8 +93,6 @@ namespace Akka.Persistence.RavenDb
                 {
                     if (e.Message.Contains("exists") == false)
                     {
-                        File.AppendAllText(@"C:\\Work\\Akka\\testLogs.txt",
-                            $"\n\n(journal CreateDatabaseAsync) {Configuration.Name}:\n{e}");
                         return new Status.Failure(e);
                     }
 
@@ -111,8 +109,6 @@ namespace Akka.Persistence.RavenDb
                 }
                 catch (Exception e)
                 {
-                    File.AppendAllText(@"C:\\Work\\Akka\\testLogs.txt",
-                        $"\n\n(journal CreateDatabaseAsync) {Configuration.Name}:\n{e}");
                     return new Status.Failure(e);
                 }
 
@@ -121,6 +117,56 @@ namespace Akka.Persistence.RavenDb
             }
 
             return new Status.Failure(new Exception($"Failed to create database after 5 tries"));
+        }
+
+        public async Task<Status> EnsureIndexesCreated()
+        {
+            using var cts = GetCancellationTokenSource(false);
+
+            var startTime = DateTime.Now;
+            while (DateTime.Now - TimeSpan.FromSeconds(15) < startTime)
+            {
+                if (cts.IsCancellationRequested)
+                    return new Status.Success(NotUsed.Instance);
+
+                try
+                {
+                    var db = await Instance.Maintenance.Server.SendAsync(
+                        new GetDatabaseRecordOperation(Configuration.Name), cts.Token);
+                    if (db != null)
+                    {
+                        var res1 = await Instance.Maintenance.SendAsync(new GetIndexNamesOperation(0, int.MaxValue),
+                            cts.Token);
+                        if (res1.Contains(nameof(EventsByTagAndChangeVector)) &&
+                            res1.Contains(nameof(ActorsByChangeVector)))
+                        {
+                            return new Status.Success(NotUsed.Instance);
+                        }
+
+                        await new EventsByTagAndChangeVector().ExecuteAsync(Instance, token: cts.Token);
+                        await new ActorsByChangeVector().ExecuteAsync(Instance, token: cts.Token);
+
+                        return new Status.Success(NotUsed.Instance);
+                    }
+                }
+                catch (Exception e) when (e is OperationCanceledException || e is TaskCanceledException)
+                {
+                    //TODO stav: is cancelled due to Akka - we don't need the indexes anymore. Or due to timeout - need to return failure
+                    return new Status.Success(NotUsed.Instance);
+                }
+                catch (DatabaseDisabledException e)
+                {
+                    //database locked, try again
+                }
+                catch (Exception e)
+                {
+                    return new Status.Failure(new Exception($"Failed to create indexes.", e));
+                }
+
+                await Task.Delay(TimeSpan.FromMilliseconds(250));
+            }
+
+            return new Status.Failure(new Exception($"Waited too long for indexes to be created."));
         }
 
         public string GetMetadataId(string persistenceId) => $"{EventsMetadataCollection}/{persistenceId}";

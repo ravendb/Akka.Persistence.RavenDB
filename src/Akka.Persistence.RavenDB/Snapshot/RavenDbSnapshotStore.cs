@@ -26,7 +26,7 @@ namespace Akka.Persistence.RavenDb.Snapshot
             _configuration = configuration;
             _serialization = Context.System.Serialization;
             _journalRef = Persistence.Instance.Apply(Context.System).JournalFor("");
-            _store ??= new RavenDbStore(_configuration);
+            _store = new RavenDbStore(_configuration);
         }
 
         public async Task<object> Initialize()
@@ -44,7 +44,7 @@ namespace Akka.Persistence.RavenDb.Snapshot
             base.PreStart();
 
             // Call the Initialize method and pipe the result back to signal that
-            // database schemas are ready to use, if it needs to be initialized
+            // the database is ready to use, if it needs to be initialized
             Initialize().PipeTo(Self);
 
             // WaitingForInitialization receive handler will wait for a success/fail
@@ -58,17 +58,16 @@ namespace Akka.Persistence.RavenDb.Snapshot
         {
             switch (message)
             {
-                // Tables are already created or successfully created all needed tables
+                // Database is already created or successfully created all needed databases
                 case Status.Success _:
                     UnbecomeStacked();
-                    // Unstash all messages received when we were initializing our tables
+                    // Unstash all messages received while we were initializing our database
                     Stash.UnstashAll();
                     break;
 
                 case Status.Failure fail:
-                    // Failed creating tables. Log an error and stop the actor.
+                    // Failed creating database. Log an error and stop the actor.
                     //_log.Error(fail.Cause, "Failure during {0} initialization.", Self);
-                    File.AppendAllText(@"C:\\Work\\Akka\\testLogs.txt", $"\n\n(snapshot Stopping actor) {_configuration.Name}:\n. failure during {Self} initialization.\n {fail.Cause}");
                     Context.Stop(Self);
                     break;
 

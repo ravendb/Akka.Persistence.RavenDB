@@ -6,12 +6,8 @@ using Akka.Persistence.RavenDb.Query;
 using Nito.AsyncEx;
 using Raven.Client.Documents.Commands.Batches;
 using Raven.Client.Documents.Operations;
-using Raven.Client.Documents.Operations.Indexes;
-using Raven.Client.Exceptions.Database;
-using Raven.Client.ServerWide.Operations;
 using System.Collections.Concurrent;
 using System.Collections.Immutable;
-using static Akka.Persistence.Journal.MemoryJournal;
 
 namespace Akka.Persistence.RavenDb.Journal
 {
@@ -38,7 +34,7 @@ namespace Akka.Persistence.RavenDb.Journal
         {
             _configuration = configuration;
             _serialization = Context.System.Serialization;
-            _store ??= new RavenDbStore(_configuration);
+            _store = new RavenDbStore(_configuration);
         }
 
         public async Task<object> Initialize()
@@ -56,7 +52,7 @@ namespace Akka.Persistence.RavenDb.Journal
             base.PreStart();
 
             // Call the Initialize method and pipe the result back to signal that
-            // database schemas are ready to use, if it needs to be initialized
+            // the database is ready to use, if it needs to be initialized
             Initialize().PipeTo(Self);
 
             // WaitingForInitialization receive handler will wait for a success/fail
@@ -70,17 +66,16 @@ namespace Akka.Persistence.RavenDb.Journal
         {
             switch (message)
             {
-                // Tables are already created or successfully created all needed tables
+                // Database is already created or successfully created all needed databases
                 case Status.Success _:
                     UnbecomeStacked();
-                    // Unstash all messages received when we were initializing our tables
+                    // Unstash all messages received while we were initializing our database
                     Stash.UnstashAll();
                     break;
 
                 case Status.Failure fail:
-                    // Failed creating tables. Log an error and stop the actor.
+                    // Failed creating database. Log an error and stop the actor.
                     //_log.Error(fail.Cause, "Failure during {0} initialization.", Self);
-                    File.AppendAllText(@"C:\\Work\\Akka\\testLogs.txt", $"\n\n(journal Stopping actor) {_configuration.Name}:\n. failure during {Self} initialization.\n {fail.Cause}");
                     Context.Stop(Self);
                     break;
 
@@ -99,26 +94,9 @@ namespace Akka.Persistence.RavenDb.Journal
             {
                 case RavenDbReadJournal.CreateIndexesMessage create:
                     var sender = Sender;
-                    EnsureIndexesCreated(_store).PipeTo(sender);
+                    _store.EnsureIndexesCreated().PipeTo(sender);
                     return true;
-                case ReplayTaggedMessages replay:
-                    //ReplayTaggedMessagesAsync(replay)
-                    //    .PipeTo(replay.ReplyTo, success: h => new RecoverySuccess(h),
-                    //        failure: e => new ReplayMessagesFailure(e));
-                    File.AppendAllText(@"C:\\Work\\Akka\\testLogs.txt", $"\n\n(journal ReceivePluginInternal ReplayTaggedMessages) {_configuration.Name} \n message: {message.ToString()}");
-                    return true;
-                case ReplayAllEvents replay:
-                    //ReplayAllEventsAsync(replay)
-                    //    .PipeTo(replay.ReplyTo, success: h => new EventReplaySuccess(h),
-                    //        failure: e => new EventReplayFailure(e));
-                    File.AppendAllText(@"C:\\Work\\Akka\\testLogs.txt", $"\n\n(journal ReceivePluginInternal ReplayAllEvents) {_configuration.Name}:\n message: {message.ToString()}");
-                    return true;
-                case SelectCurrentPersistenceIds request:
-                    //SelectAllPersistenceIdsAsync(request.Offset)
-                    //    .PipeTo(request.ReplyTo,
-                    //        success: result => new CurrentPersistenceIds(result.Ids, request.Offset));
-                    File.AppendAllText(@"C:\\Work\\Akka\\testLogs.txt", $"\n\n(journal ReceivePluginInternal SelectCurrentPersistenceIds) {_configuration.Name}:\n message: {message.ToString()}");
-                    return true;
+                
                 default:
                     return false;
             }
@@ -283,59 +261,5 @@ namespace Akka.Persistence.RavenDb.Journal
         }
 
         private AsyncReaderWriterLock GetLocker(string persistenceId) => _lockPerActor.GetOrAdd(persistenceId, new AsyncReaderWriterLock());
-
-        public static async Task<Status> EnsureIndexesCreated(RavenDbStore store)
-        {
-            using var cts = store.GetCancellationTokenSource(false);
-            if (cts.IsCancellationRequested)
-                return new Status.Success(NotUsed.Instance);
-
-            var startTime = DateTime.Now;
-            while (DateTime.Now - TimeSpan.FromSeconds(15) < startTime)
-            {
-                try
-                {
-                    var db = await store.Instance.Maintenance.Server.SendAsync(
-                        new GetDatabaseRecordOperation(store.Configuration.Name), cts.Token);
-                    if (db == null)
-                    {
-                        Thread.Sleep(TimeSpan.FromMilliseconds(250));
-                        continue;
-                    }
-
-                    var res1 = await store.Instance.Maintenance.SendAsync(new GetIndexNamesOperation(0, int.MaxValue), cts.Token);
-                    if (res1.Contains(nameof(EventsByTagAndChangeVector)) &&
-                        res1.Contains(nameof(ActorsByChangeVector)))
-                    {
-                        return new Status.Success(NotUsed.Instance);
-                    }
-
-                    await new EventsByTagAndChangeVector().ExecuteAsync(store.Instance, token: cts.Token);
-                    await new ActorsByChangeVector().ExecuteAsync(store.Instance, token: cts.Token);
-
-                    return new Status.Success(NotUsed.Instance);
-                }
-                catch (DatabaseDoesNotExistException e)
-                {
-                    Thread.Sleep(TimeSpan.FromMilliseconds(250));
-                }
-                catch (DatabaseDisabledException e)
-                {
-                    //database locked, try again
-                    Thread.Sleep(TimeSpan.FromMilliseconds(250));
-                }
-                catch (Exception e)
-                {
-                    File.AppendAllText(@"C:\\Work\\Akka\\testLogs.txt",
-                        $"\n\n(ReadJournal EnsureIndexesCreated) {store.Configuration.Name}:\n. {e}");
-                    return new Status.Failure(new Exception($"Failed to create indexes.", e));
-                }
-            }
-
-            File.AppendAllText(@"C:\\Work\\Akka\\testLogs.txt",
-                $"\n\n(ReadJournal EnsureIndexesCreated) {store.Configuration.Name}:\n. Waited too long for indexes to be created");
-            return new Status.Failure(new Exception($"Waited too long for indexes to be created."));
-        }
-
     }
 }
