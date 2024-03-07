@@ -9,7 +9,7 @@ using System.Threading.Channels;
 
 namespace Akka.Persistence.RavenDb.Query
 {
-    public class RavenDbReadJournal ://TODO why called Journal if namespace is Query
+    public class RavenDbReadJournal :
         IPersistenceIdsQuery,
         ICurrentPersistenceIdsQuery,
         IEventsByPersistenceIdQuery,
@@ -27,16 +27,25 @@ namespace Akka.Persistence.RavenDb.Query
         public readonly RavenDbPersistence Storage;
         private readonly Akka.Serialization.Serialization _serialization;
         
-        public RavenDbReadJournal(ExtendedActorSystem system, Config config)
+        private readonly RavenDbStore _store;
+        private readonly IActorRef _journalRef;
+        public RavenDbStore Store => _store;
+
+        public RavenDbReadJournal(ExtendedActorSystem system, Config queryConfig)//TODO stav: need to use this config to fetch query configuration (this contains query only)
         {
+            _journalRef = Persistence.Instance.Apply(system).JournalFor("");
             _serialization = system.Serialization;//TODO move to configuration class?
             Storage = system.WithExtension<RavenDbPersistence, RavenDbPersistenceProvider>();
+            _store ??= new RavenDbStore(Storage.JournalConfiguration); //TODO stav: eventually remove
         }
 
-        public void PreStart()
+        public class CreateIndexesMessage
         {
-            new EventsByTagAndChangeVector().Execute(Storage.Instance, database: Storage.JournalConfiguration.Name);
-            new ActorsByChangeVector().Execute(Storage.Instance, database: Storage.JournalConfiguration.Name);
+        }
+
+        public void EnsureJournalCreatedIndexes()
+        {
+            _journalRef.Ask(new CreateIndexesMessage()).Wait();
         }
 
         public Source<string, NotUsed> PersistenceIds()
@@ -55,8 +64,8 @@ namespace Akka.Persistence.RavenDb.Query
             {
                 try
                 {
-                    using var session = Storage.OpenAsyncSession();
-                    using var cts = Storage.GetCancellationTokenSource(useSaveChangesTimeout: false);
+                    using var session = _store.Instance.OpenAsyncSession();
+                    using var cts = _store.GetCancellationTokenSource(useSaveChangesTimeout: false);
                     await using var results = await session.Advanced.StreamAsync(session.Query<ActorId>(), cts.Token);
                     while (await results.MoveNextAsync())
                     {
@@ -91,13 +100,13 @@ namespace Akka.Persistence.RavenDb.Query
             {
                 try
                 {
-                    using var session = Storage.OpenAsyncSession();
-                    using var cts = Storage.GetCancellationTokenSource(useSaveChangesTimeout: false);
+                    using var session = _store.Instance.OpenAsyncSession();
+                    using var cts = _store.GetCancellationTokenSource(useSaveChangesTimeout: false);
                     session.Advanced.SessionInfo.SetContext(persistenceId);
 
                     await using var results = await session.Advanced.StreamAsync<Journal.Types.Event>(
-                        startsWith: Storage.GetEventPrefix(persistenceId),
-                        startAfter: Storage.GetSequenceId(persistenceId, fromSequenceNr - 1),
+                        startsWith: _store.GetEventPrefix(persistenceId),
+                        startAfter: _store.GetSequenceId(persistenceId, fromSequenceNr - 1),
                         token: cts.Token);
                     while (await results.MoveNextAsync())
                     {
@@ -138,13 +147,13 @@ namespace Akka.Persistence.RavenDb.Query
             {
                 try
                 {
-                    using var session = Storage.OpenAsyncSession();
+                    using var session = _store.Instance.OpenAsyncSession();
                     session.Advanced.SessionInfo.SetContext(tag);
 
                     var q = session.Advanced.AsyncDocumentQuery<Journal.Types.Event>(nameof(EventsByTagAndChangeVector)).ContainsAny(e => e.Tags, new[] { tag });
                     q = ChangeVectorOffset.Convert(offset).ApplyOffset(q);
 
-                    using var cts = Storage.GetCancellationTokenSource(useSaveChangesTimeout: false);
+                    using var cts = _store.GetCancellationTokenSource(useSaveChangesTimeout: false);
                     await using var results = await session.Advanced.StreamAsync(q, cts.Token);
                     while (await results.MoveNextAsync())
                     {
@@ -181,11 +190,11 @@ namespace Akka.Persistence.RavenDb.Query
             {
                 try
                 {
-                    using var session = Storage.OpenAsyncSession();
+                    using var session = _store.Instance.OpenAsyncSession();
                     var q = session.Advanced.AsyncDocumentQuery<Journal.Types.Event>(indexName: nameof(EventsByTagAndChangeVector));
                     q = ChangeVectorOffset.Convert(offset).ApplyOffset(q);
 
-                    using var cts = Storage.GetCancellationTokenSource(useSaveChangesTimeout: false);
+                    using var cts = _store.GetCancellationTokenSource(useSaveChangesTimeout: false);
                     await using var results = await session.Advanced.StreamAsync(q, cts.Token);
                     while (await results.MoveNextAsync())
                     {

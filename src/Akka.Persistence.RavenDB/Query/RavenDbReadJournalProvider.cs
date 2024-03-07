@@ -26,9 +26,9 @@ namespace Akka.Persistence.RavenDb.Query
         /// <returns></returns>
         public IReadJournal GetReadJournal()
         {
-            var journal = new RavenDbReadJournal(_system, _config);
-            journal.PreStart();
-            return journal;
+            var j = new RavenDbReadJournal(_system, _config);
+            j.EnsureJournalCreatedIndexes();
+            return j;
         }
     }
 }

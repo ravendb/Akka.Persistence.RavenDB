@@ -1,24 +1,25 @@
 using Akka.Persistence.TCK.Journal;
-using Raven.Client.Documents;
+using Xunit.Abstractions;
 
 namespace Akka.Persistence.RavenDb.Tests
 {
     public class RavenDbJournalSpec : JournalSpec, IClassFixture<RavenDbFixture>
     {
-        private readonly IDocumentStore _store;
         protected override bool SupportsRejectingNonSerializableObjects { get; } = false;
 
-        public RavenDbJournalSpec(RavenDbFixture database) 
-            : base(database.CreateSpecConfigAndStore(out var store), nameof(RavenDbJournalSpec)) //TODO stav: no output?
+        private readonly string _databaseName;
+
+        public RavenDbJournalSpec(ITestOutputHelper output, RavenDbFixture database) 
+            : base(database.CreateSpecConfigAndStore(nameof(RavenDbJournalSpec), out var databaseName), nameof(RavenDbJournalSpec), output)
         {
-            _store = store;
+            _databaseName = databaseName;
             Initialize();
         }
 
         protected override void Dispose(bool disposing)
         {
-            _store.Dispose();
             base.Dispose(disposing);
+            TestDriverExtension.DeleteDatabase(_databaseName);
         }
     }
 }
