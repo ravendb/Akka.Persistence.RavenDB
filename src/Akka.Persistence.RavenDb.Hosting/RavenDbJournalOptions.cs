@@ -19,7 +19,7 @@ namespace Akka.Persistence.RavenDb.Hosting
             Identifier = identifier;
         }
 
-        public string Name { get; set; }
+        public string? Name { get; set; }
         public string[] Urls { get; set; }
         public string? CertificatePath { get; set; }
         public Version? HttpVersion { get; set; }
@@ -31,9 +31,11 @@ namespace Akka.Persistence.RavenDb.Hosting
 
         protected override StringBuilder Build(StringBuilder sb)
         {
-            sb.AppendLine($"name = {Name.ToHocon()}");
+            if(Name is not null)
+                sb.AppendLine($"name = {Name.ToHocon()}");
 
-            sb.AppendLine($"urls = [{string.Join(',', Urls.Select(x => x.ToHocon()))}]");
+            if(Urls is not null && Urls.Length > 0)
+                sb.AppendLine($"urls = [{string.Join(',', Urls.Select(x => x.ToHocon()))}]");
 
             if (CertificatePath is not null)
                 sb.AppendLine($"certificate-path = {CertificatePath.ToHocon()}");
