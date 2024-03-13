@@ -308,6 +308,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Akka.Persistence.RavenDb.Hosting\Akka.Persistence.RavenDb.Hosting.csproj" />
     <ProjectReference Include="..\Akka.Persistence.RavenDB\Akka.Persistence.RavenDb.csproj" />
   </ItemGroup>
 
