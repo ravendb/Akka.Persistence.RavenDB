@@ -30,7 +30,13 @@ namespace Akka.Persistence.RavenDb
             _instance = new Lazy<DocumentStore>(GetStore);
         }
 
-        public Topology Topology = new Topology();
+        public async Task<Topology> GetTopologyAsync()
+        {
+            var re = Instance.GetRequestExecutor();
+            // we do that only to ensure we have a topology set
+            await re.GetPreferredNode().ConfigureAwait(false);
+            return re.Topology;
+        }
 
         private DocumentStore GetStore()
         {
@@ -88,87 +94,62 @@ namespace Akka.Persistence.RavenDb
 
         public async Task<Status> CreateDatabaseAsync()
         {
-            Instance.GetRequestExecutor().OnTopologyUpdated += (sender, args) => SetNewTopology(args.Topology);
-
             using var cts = GetReadCancellationTokenSource();
 
-            try
+            var tries = 5;
+            while (tries > 0)
             {
-                var tries = 5;
-                while (tries > 0)
+                try
                 {
-                    try
-                    {
-                        var record =
-                            await Instance.Maintenance.Server.SendAsync(new GetDatabaseRecordOperation(Configuration.Name),
-                                token: cts.Token);
-                        if (record != null)
-                            return new Status.Success(NotUsed.Instance);
-
-                        var databaseRecord = new DatabaseRecord(Configuration.Name);
-                        var res = await Instance.Maintenance.Server.SendAsync(new CreateDatabaseOperation(databaseRecord, replicationFactor: 3), token: cts.Token);
-
-                        using (var context = JsonOperationContext.ShortTermSingleUse())
-                        {
-                            await Instance.GetRequestExecutor(Configuration.Name)
-                                .ExecuteAsync(new WaitForRaftIndexCommand(res.RaftCommandIndex), context, token: cts.Token);
-                        }
-
+                    var record =
+                        await Instance.Maintenance.Server.SendAsync(new GetDatabaseRecordOperation(Configuration.Name),
+                            token: cts.Token).ConfigureAwait(false);
+                    if (record != null)
                         return new Status.Success(NotUsed.Instance);
-                    }
-                    catch (ConcurrencyException e)
-                    {
-                        if (e.Message.Contains("exists") == false)
-                        {
-                            return new Status.Failure(e);
-                        }
 
-                        // The database already exists
-                        return new Status.Success(NotUsed.Instance);
-                    }
-                    catch (Exception e) when (e is OperationCanceledException || e is TaskCanceledException)
+                    var databaseRecord = new DatabaseRecord(Configuration.Name);
+                    var res = await Instance.Maintenance.Server.SendAsync(new CreateDatabaseOperation(databaseRecord, replicationFactor: 3), token: cts.Token).ConfigureAwait(false);
+
+                    using (var context = JsonOperationContext.ShortTermSingleUse())
                     {
-                        return new Status.Success(NotUsed.Instance);
+                        await Instance.GetRequestExecutor(Configuration.Name)
+                            .ExecuteAsync(new WaitForRaftIndexCommand(res.RaftCommandIndex), context, token: cts.Token).ConfigureAwait(false);
                     }
-                    catch (DatabaseDisabledException e)
-                    {
-                        //will retry on this
-                    }
-                    catch (Exception e)
+
+                    return new Status.Success(NotUsed.Instance);
+                }
+                catch (ConcurrencyException e)
+                {
+                    if (e.Message.Contains("exists") == false)
                     {
                         return new Status.Failure(e);
                     }
 
-                    await Task.Delay(TimeSpan.FromMilliseconds(250));
-                    tries--;
+                    // The database already exists
+                    return new Status.Success(NotUsed.Instance);
+                }
+                catch (Exception e) when (e is OperationCanceledException || e is TaskCanceledException)
+                {
+                    return new Status.Success(NotUsed.Instance);
+                }
+                catch (DatabaseDisabledException e)
+                {
+                    //will retry on this
+                }
+                catch (Exception e)
+                {
+                    return new Status.Failure(e);
                 }
 
-                return new Status.Failure(new Exception($"Failed to create database after 5 tries"));
+                await Task.Delay(TimeSpan.FromMilliseconds(250)).ConfigureAwait(false);
+                tries--;
             }
-            finally
-            {
-                var topology = await Instance.Operations.SendAsync(new GetDatabaseTopologyOperation(), token: cts.Token);
-                SetNewTopology(topology);
-            }
+
+            return new Status.Failure(new Exception($"Failed to create database after 5 tries"));
         }
 
-        private void SetNewTopology(Topology topology)
-        {
-            while (true)
-            {
-                var current = Topology;
 
-                if (topology.Etag > current.Etag)
-                {
-                    if (Interlocked.CompareExchange(ref Topology, topology, current) != current)
-                        continue;
-                }    
-
-                return;
-            }
-        }
-
-        public async Task<Status> EnsureIndexesCreated()
+        public async Task<Status> EnsureIndexesCreatedAsync()
         {
             using var cts = GetReadCancellationTokenSource();
 
@@ -181,19 +162,19 @@ namespace Akka.Persistence.RavenDb
                 try
                 {
                     var db = await Instance.Maintenance.Server.SendAsync(
-                        new GetDatabaseRecordOperation(Configuration.Name), cts.Token);
+                        new GetDatabaseRecordOperation(Configuration.Name), cts.Token).ConfigureAwait(false);
                     if (db != null)
                     {
                         var res1 = await Instance.Maintenance.SendAsync(new GetIndexNamesOperation(0, int.MaxValue),
-                            cts.Token);
+                            cts.Token).ConfigureAwait(false);
                         if (res1.Contains(nameof(EventsByTagAndChangeVector)) &&
                             res1.Contains(nameof(ActorsByChangeVector)))
                         {
                             return new Status.Success(NotUsed.Instance);
                         }
 
-                        await new EventsByTagAndChangeVector().ExecuteAsync(Instance, token: cts.Token);
-                        await new ActorsByChangeVector().ExecuteAsync(Instance, token: cts.Token);
+                        await new EventsByTagAndChangeVector().ExecuteAsync(Instance, token: cts.Token).ConfigureAwait(false);
+                        await new ActorsByChangeVector().ExecuteAsync(Instance, token: cts.Token).ConfigureAwait(false);
 
                         return new Status.Success(NotUsed.Instance);
                     }
@@ -212,7 +193,7 @@ namespace Akka.Persistence.RavenDb
                     return new Status.Failure(new Exception($"Failed to create indexes.", e));
                 }
 
-                await Task.Delay(TimeSpan.FromMilliseconds(250));
+                await Task.Delay(TimeSpan.FromMilliseconds(250)).ConfigureAwait(false);
             }
 
             return new Status.Failure(new Exception($"Waited too long for indexes to be created."));
@@ -287,7 +268,7 @@ namespace Akka.Persistence.RavenDb
 
         public static Config DefaultConfiguration()
         {
-            return ConfigurationFactory.FromResource<RavenDbPersistence>("Akka.Persistence.RavenDB.reference.conf");
+            return ConfigurationFactory.FromResource<RavenDbPersistence>("Akka.Persistence.RavenDb.reference.conf");
         }
     }
 }

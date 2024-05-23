@@ -43,7 +43,7 @@ namespace Akka.Persistence.RavenDb.Journal
         {
             if (_configuration.AutoInitialize)
             {
-                return await _store.CreateDatabaseAsync();
+                return await _store.CreateDatabaseAsync().ConfigureAwait(false);
             }
 
             return new Status.Success(NotUsed.Instance);
@@ -96,7 +96,7 @@ namespace Akka.Persistence.RavenDb.Journal
             {
                 case RavenDbReadJournal.CreateIndexesMessage create:
                     var sender = Sender;
-                    _store.EnsureIndexesCreated().PipeTo(sender);
+                    _store.EnsureIndexesCreatedAsync().PipeTo(sender);
                     return true;
                 
                 default:
@@ -123,11 +123,11 @@ namespace Akka.Persistence.RavenDb.Journal
             using var cts = _store.GetReadCancellationTokenSource(TimeSpan.FromMinutes(5));
 
             session.Advanced.SessionInfo.SetContext(persistenceId);
-            var node = await session.Advanced.GetCurrentSessionNode();
+            var node = await session.Advanced.GetCurrentSessionNode().ConfigureAwait(false);
             var prefix = _store.GetEventPrefix(persistenceId);
 
             // metadata document will indicate what is the possible current max sequence on this node
-            var currentMetadata = await session.LoadAsync<Metadata>(_store.GetMetadataId(persistenceId), cts.Token);
+            var currentMetadata = await session.LoadAsync<Metadata>(_store.GetMetadataId(persistenceId), cts.Token).ConfigureAwait(false);
             var currentMax = currentMetadata.MaxSequenceNr;
 
             // when running in a cluster we can connect to a node that doesn't have all events just yet.
@@ -136,12 +136,13 @@ namespace Akka.Persistence.RavenDb.Journal
             var changes = _store.Instance.Changes(_store.Instance.Database, node.ClusterTag).ForDocumentsStartingWith(prefix);
             using var prefixChanges = changes.Subscribe(_ => waiter.Set());
 
-            await changes.EnsureSubscribedNow();
+            await changes.EnsureSubscribedNow().ConfigureAwait(false);
 
             while (true)
             {
-                await using var results = await session.Advanced.StreamAsync<Types.Event>(startsWith: _store.GetEventPrefix(persistenceId), startAfter: _store.GetSequenceId(persistenceId, fromSequenceNr - 1), token: cts.Token);
-                while (await results.MoveNextAsync())
+                await using var results = await session.Advanced.StreamAsync<Types.Event>(startsWith: _store.GetEventPrefix(persistenceId),
+                    startAfter: _store.GetSequenceId(persistenceId, fromSequenceNr - 1), token: cts.Token).ConfigureAwait(false);
+                while (await results.MoveNextAsync().ConfigureAwait(false))
                 {
                     if (max <= 0)
                         return;
@@ -164,7 +165,7 @@ namespace Akka.Persistence.RavenDb.Journal
                 if (currentMax >= toSequenceNr)
                     return;
 
-                await waiter.WaitAsync(cts.Token);
+                await waiter.WaitAsync(cts.Token).ConfigureAwait(false);
                 waiter.Reset();
             }
         }
@@ -172,15 +173,16 @@ namespace Akka.Persistence.RavenDb.Journal
         // we read the metadata document from all member nodes in order to ensure recovery to the latest state
         public override async Task<long> ReadHighestSequenceNrAsync(string persistenceId, long fromSequenceNr)
         {
-            using (await GetLocker(persistenceId).WriterLockAsync())
+            using (await GetLocker(persistenceId).WriterLockAsync().ConfigureAwait(false))
             {
                 using var session = _store.Instance.OpenAsyncSession();
                 using var cts = _store.GetReadCancellationTokenSource();
                 var maxSequenceNr = 0L;
                 var id = _store.GetMetadataId(persistenceId);
-                foreach (var node in _store.Topology.Nodes)
+                var topology = await _store.GetTopologyAsync().ConfigureAwait(false);
+                foreach (var node in topology.Nodes)
                 {
-                    var doc = await _store.Instance.Maintenance.SendAsync(new GetDocumentOperation<Metadata>(id, node.ClusterTag), cts.Token);
+                    var doc = await _store.Instance.Maintenance.SendAsync(new GetDocumentOperation<Metadata>(id, node.ClusterTag), cts.Token).ConfigureAwait(false);
                     if (doc == null)
                         continue;
                    
@@ -200,7 +202,6 @@ namespace Akka.Persistence.RavenDb.Journal
         /// As part of the transaction will also update a metadata document for the given actor with the ID of 'Metadatas/[PersistenceId]', which we use for concurrency check and keep the latest SequenceNr <br/>  
         /// For a newly created actor we will also create an immutable document with the ID 'UniqueActors/[PersistenceId]' that we use for <see cref="RavenDbReadJournal.PersistenceIds"/> and <see cref="RavenDbReadJournal.CurrentPersistenceIds"/> queries.<para/>
         /// 
-        /// We prefer availability and performance over consistency, so we wait for the transaction to be persistent on one node <br/>
         /// It may happen that two writes will go to different nodes, to ensure gap less sequence of events we check on the server-side and allow to persist only the next sequence events (if latest is 100, so we can persist only 101), otherwise we will throw <see cref="ConcurrencyException"/> 
         /// </summary>
         /// <param name="messages"></param>
@@ -224,7 +225,7 @@ namespace Akka.Persistence.RavenDb.Journal
             {
                 try
                 {
-                    await writes[atomicWrite.PersistenceId]; // unwrap the exception if needed
+                    await writes[atomicWrite.PersistenceId].ConfigureAwait(false); // unwrap the exception if needed
                     builder.Add(null);
                 }
                 catch (Exception e)
@@ -240,7 +241,7 @@ namespace Akka.Persistence.RavenDb.Journal
         private async Task AtomicWriteForActor(IGrouping<string, AtomicWrite> atomicWrites, CancellationTokenSource cts)
         {
             var persistenceId = atomicWrites.Key;
-            using var _ = await GetLocker(persistenceId).ReaderLockAsync(cts.Token);
+            using var _ = await GetLocker(persistenceId).ReaderLockAsync(cts.Token).ConfigureAwait(false);
             using var session = _store.Instance.OpenAsyncSession();
             session.Advanced.SessionInfo.SetContext(persistenceId);
             // TODO stav: might need to set transaction mode here
@@ -261,7 +262,7 @@ namespace Akka.Persistence.RavenDb.Journal
                     var id = _store.GetSequenceId(representation.PersistenceId, representation.SequenceNr);
                     var journalEvent = Types.Event.Serialize(_serialization, representation);
                     // events are immutable and should always be new 
-                    await session.StoreAsync(journalEvent, changeVector: string.Empty, id, cts.Token);
+                    await session.StoreAsync(journalEvent, changeVector: string.Empty, id, cts.Token).ConfigureAwait(false);
                 }
             }
 
@@ -293,7 +294,7 @@ namespace Akka.Persistence.RavenDb.Journal
 
             _store.SetConsistencyLevel(_configuration, session);
 
-            await session.SaveChangesAsync(cts.Token);
+            await session.SaveChangesAsync(cts.Token).ConfigureAwait(false);
         }
 
         protected override async Task DeleteMessagesToAsync(string persistenceId, long toSequenceNr)
@@ -305,8 +306,8 @@ namespace Akka.Persistence.RavenDb.Journal
                 deleted = 0;
                 using var readCts = _store.GetReadCancellationTokenSource();
                 using var session = _store.Instance.OpenAsyncSession();
-                await using var results = await session.Advanced.StreamAsync<Types.Event>(startsWith: _store.GetEventPrefix(persistenceId), pageSize: batch, token: readCts.Token);
-                while (await results.MoveNextAsync())
+                await using var results = await session.Advanced.StreamAsync<Types.Event>(startsWith: _store.GetEventPrefix(persistenceId), pageSize: batch, token: readCts.Token).ConfigureAwait(false);
+                while (await results.MoveNextAsync().ConfigureAwait(false))
                 {
                     var current = results.Current.Document;
                     if (current.SequenceNr > toSequenceNr)
@@ -317,7 +318,7 @@ namespace Akka.Persistence.RavenDb.Journal
                 }
 
                 using var writeCts = _store.GetReadCancellationTokenSource();
-                await session.SaveChangesAsync(writeCts.Token);
+                await session.SaveChangesAsync(writeCts.Token).ConfigureAwait(false);
             } while (deleted == batch);
         }
 

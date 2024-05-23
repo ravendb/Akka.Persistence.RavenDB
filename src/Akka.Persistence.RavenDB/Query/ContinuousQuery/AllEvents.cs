@@ -19,21 +19,21 @@ public class AllEvents : ContinuousQuery<TimeoutChange>
         return new TimeoutObservable(Ravendb.Storage.QueryConfiguration.RefreshInterval);
     }
 
-    protected override async Task Query()
+    protected override async Task QueryAsync()
     {
         using var session = Ravendb.Store.Instance.OpenAsyncSession();
         var q = session.Advanced.AsyncDocumentQuery<Journal.Types.Event>(nameof(Journal.EventsByTagAndChangeVector));
         q = _offset.ApplyOffset(q);
         using var cts = Ravendb.Store.GetReadCancellationTokenSource();
-        await using var results = await session.Advanced.StreamAsync(q, cts.Token);
-        while (await results.MoveNextAsync())
+        await using var results = await session.Advanced.StreamAsync(q, cts.Token).ConfigureAwait(false);
+        while (await results.MoveNextAsync().ConfigureAwait(false))
         {
             var @event = results.Current.Document;
             var persistent = Journal.Types.Event.Deserialize(Ravendb.Storage.Serialization, @event, ActorRefs.NoSender);
             _offset = new ChangeVectorOffset(results.Current.ChangeVector);
             var e = new EventEnvelope(_offset, @event.PersistenceId, @event.SequenceNr, persistent.Payload,
                 @event.Timestamp, @event.Tags);
-            await Channel.Writer.WriteAsync(e, cts.Token);
+            await Channel.Writer.WriteAsync(e, cts.Token).ConfigureAwait(false);
         }
     }
 }

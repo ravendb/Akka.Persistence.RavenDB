@@ -19,7 +19,7 @@ public class PersistenceIds : ContinuousQuery<IndexChange, string>
         return changes.ForIndex(nameof(ActorsByChangeVector));
     }
 
-    protected override async Task Query()
+    protected override async Task QueryAsync()
     {
         using var session = Ravendb.Store.Instance.OpenAsyncSession();
         
@@ -27,11 +27,11 @@ public class PersistenceIds : ContinuousQuery<IndexChange, string>
         q = _offset.ApplyOffset(q);
 
         using var cts = Ravendb.Store.GetReadCancellationTokenSource();
-        await using var results = await session.Advanced.StreamAsync(q, cts.Token);
-        while (await results.MoveNextAsync())
+        await using var results = await session.Advanced.StreamAsync(q, cts.Token).ConfigureAwait(false);
+        while (await results.MoveNextAsync().ConfigureAwait(false))
         {
             var id = results.Current.Document.PersistenceId;
-            await Channel.Writer.WriteAsync(id, cts.Token);
+            await Channel.Writer.WriteAsync(id, cts.Token).ConfigureAwait(false);
             _offset = new ChangeVectorOffset(results.Current.ChangeVector);
         }
     }

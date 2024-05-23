@@ -18,7 +18,7 @@ namespace Akka.Persistence.RavenDb.Tests
         protected override void Dispose(bool disposing)
         {
             base.Dispose(disposing);
-            // TestDriverExtension.DeleteDatabase(_databaseName);
+            TestDriverExtension.DeleteDatabase(_databaseName);
         }
     }
 }

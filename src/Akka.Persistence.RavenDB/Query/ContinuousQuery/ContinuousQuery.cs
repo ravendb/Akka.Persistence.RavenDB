@@ -18,7 +18,7 @@ public abstract class ContinuousQuery<TChange, TInput> where TChange : DatabaseC
 
     protected abstract IChangesObservable<TChange> Subscribe(IDatabaseChanges changes);
 
-    protected abstract Task Query();
+    protected abstract Task QueryAsync();
 
     public async Task Run()
     {
@@ -26,19 +26,19 @@ public abstract class ContinuousQuery<TChange, TInput> where TChange : DatabaseC
         try
         {
             var mre = new AsyncManualResetEvent(false);
-            using var changes = await Ravendb.Store.Instance.Changes(Ravendb.Store.Configuration.Name).EnsureConnectedNow();
+            using var changes = await Ravendb.Store.Instance.Changes(Ravendb.Store.Configuration.Name).EnsureConnectedNow().ConfigureAwait(false);
             var observable = Subscribe(changes);
             using var sub = observable.Subscribe(x => mre.Set()); // TODO on error need to reconnect
 
-            await observable.EnsureSubscribedNow();
+            await observable.EnsureSubscribedNow().ConfigureAwait(false);
 
             while (true)
             {
                 mre.Reset();
 
-                await Query();
+                await QueryAsync().ConfigureAwait(false);
 
-                await mre.WaitAsync();
+                await mre.WaitAsync().ConfigureAwait(false);
             }
         }
         catch (Exception e)

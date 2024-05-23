@@ -24,15 +24,15 @@ public class EventsByPersistenceId : ContinuousQuery<DocumentChange>
         return changes.ForDocumentsStartingWith(prefix);
     }
 
-    protected override async Task Query()
+    protected override async Task QueryAsync()
     {
         using var session = Ravendb.Store.Instance.OpenAsyncSession();
         session.Advanced.SessionInfo.SetContext(_persistenceId);
 
         using var cts = Ravendb.Store.GetReadCancellationTokenSource();
         await using var results = await session.Advanced.StreamAsync<Journal.Types.Event>(startsWith: Ravendb.Store.GetEventPrefix(_persistenceId),
-            startAfter: Ravendb.Store.GetSequenceId(_persistenceId, _fromSequenceNr), token: cts.Token);
-        while (await results.MoveNextAsync())
+            startAfter: Ravendb.Store.GetSequenceId(_persistenceId, _fromSequenceNr), token: cts.Token).ConfigureAwait(false);
+        while (await results.MoveNextAsync().ConfigureAwait(false))
         {
             var @event = results.Current.Document;
             if (results.Current.Document.SequenceNr > _toSequenceNr)
@@ -41,7 +41,7 @@ public class EventsByPersistenceId : ContinuousQuery<DocumentChange>
             var persistent = Journal.Types.Event.Deserialize(Ravendb.Storage.Serialization, @event, ActorRefs.NoSender);
             var e = new EventEnvelope(new Sequence(@event.Timestamp), @event.PersistenceId, @event.SequenceNr, persistent.Payload, @event.Timestamp,
                 @event.Tags);
-            await Channel.Writer.WriteAsync(e, cts.Token);
+            await Channel.Writer.WriteAsync(e, cts.Token).ConfigureAwait(false);
             _fromSequenceNr = e.SequenceNr;
         }
 

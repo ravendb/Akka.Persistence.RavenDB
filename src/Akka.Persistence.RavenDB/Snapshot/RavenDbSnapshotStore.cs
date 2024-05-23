@@ -32,7 +32,7 @@ namespace Akka.Persistence.RavenDb.Snapshot
         {
             if (_configuration.AutoInitialize)
             {
-                return await _store.CreateDatabaseAsync();
+                return await _store.CreateDatabaseAsync().ConfigureAwait(false);
             }
             
             return new Status.Success(NotUsed.Instance);
@@ -93,9 +93,9 @@ namespace Akka.Persistence.RavenDb.Snapshot
             using var cts = _store.GetReadCancellationTokenSource();
             session.Advanced.SessionInfo.SetContext(persistenceId);
 
-            await using var results = await session.Advanced.StreamAsync<Snapshot>(startsWith: GetSnapshotPrefix(persistenceId), startAfter: GetSnapshotId(persistenceId, criteria.MinSequenceNr - 1), token: cts.Token);
+            await using var results = await session.Advanced.StreamAsync<Snapshot>(startsWith: GetSnapshotPrefix(persistenceId), startAfter: GetSnapshotId(persistenceId, criteria.MinSequenceNr - 1), token: cts.Token).ConfigureAwait(false);
             Snapshot lastValidSnapshot = null; // yuck!
-            while (await results.MoveNextAsync()) 
+            while (await results.MoveNextAsync().ConfigureAwait(false)) 
             {
                 var current = results.Current.Document;
                 var isBetween = criteria.MinTimestamp <= current.Timestamp && criteria.MaxTimeStamp >= current.Timestamp; 
@@ -118,11 +118,11 @@ namespace Akka.Persistence.RavenDb.Snapshot
             session.Advanced.SessionInfo.SetContext(metadata.PersistenceId);
 
             using var cts = _store.GetWriteCancellationTokenSource();
-            await session.StoreAsync(Snapshot.Serialize(_serialization, metadata, snapshot), id, cts.Token);
+            await session.StoreAsync(Snapshot.Serialize(_serialization, metadata, snapshot), id, cts.Token).ConfigureAwait(false);
 
             _store.SetConsistencyLevel(_configuration, session);
 
-            await session.SaveChangesAsync(cts.Token);
+            await session.SaveChangesAsync(cts.Token).ConfigureAwait(false);
         }
 
         protected override async Task DeleteAsync(SnapshotMetadata metadata)
@@ -132,7 +132,7 @@ namespace Akka.Persistence.RavenDb.Snapshot
             session.Advanced.SessionInfo.SetContext(metadata.PersistenceId);
             using var cts = _store.GetWriteCancellationTokenSource();
             session.Delete(id);
-            await session.SaveChangesAsync(cts.Token);
+            await session.SaveChangesAsync(cts.Token).ConfigureAwait(false);
         }
 
         protected override async Task DeleteAsync(string persistenceId, SnapshotSelectionCriteria criteria)
@@ -142,8 +142,8 @@ namespace Akka.Persistence.RavenDb.Snapshot
             using var readCts = _store.GetReadCancellationTokenSource();
             session.Advanced.SessionInfo.SetContext(persistenceId);
 
-            await using var results = await session.Advanced.StreamAsync<SnapshotMetadata>(startsWith: GetSnapshotPrefix(persistenceId), startAfter: GetSnapshotId(persistenceId, criteria.MinSequenceNr - 1), token: readCts.Token);
-            while (await results.MoveNextAsync())
+            await using var results = await session.Advanced.StreamAsync<SnapshotMetadata>(startsWith: GetSnapshotPrefix(persistenceId), startAfter: GetSnapshotId(persistenceId, criteria.MinSequenceNr - 1), token: readCts.Token).ConfigureAwait(false);
+            while (await results.MoveNextAsync().ConfigureAwait(false))
             {
                 var current = results.Current.Document;
                 var shouldDelete =  
@@ -155,7 +155,7 @@ namespace Akka.Persistence.RavenDb.Snapshot
             }
 
             using var writeCts = _store.GetWriteCancellationTokenSource();
-            await session.SaveChangesAsync(writeCts.Token);
+            await session.SaveChangesAsync(writeCts.Token).ConfigureAwait(false);
         }
 
         private string GetSnapshotPrefix(string persistenceId) => $"{_store.SnapshotsCollection}/{persistenceId}/";
