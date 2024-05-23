@@ -29,7 +29,7 @@ public class EventsByPersistenceId : ContinuousQuery<DocumentChange>
         using var session = Ravendb.Store.Instance.OpenAsyncSession();
         session.Advanced.SessionInfo.SetContext(_persistenceId);
 
-        using var cts = Ravendb.Store.GetCancellationTokenSource(useSaveChangesTimeout: false);
+        using var cts = Ravendb.Store.GetReadCancellationTokenSource();
         await using var results = await session.Advanced.StreamAsync<Journal.Types.Event>(startsWith: Ravendb.Store.GetEventPrefix(_persistenceId),
             startAfter: Ravendb.Store.GetSequenceId(_persistenceId, _fromSequenceNr), token: cts.Token);
         while (await results.MoveNextAsync())

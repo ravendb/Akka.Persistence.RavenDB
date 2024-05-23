@@ -24,7 +24,7 @@ public class AllEvents : ContinuousQuery<TimeoutChange>
         using var session = Ravendb.Store.Instance.OpenAsyncSession();
         var q = session.Advanced.AsyncDocumentQuery<Journal.Types.Event>(nameof(Journal.EventsByTagAndChangeVector));
         q = _offset.ApplyOffset(q);
-        using var cts = Ravendb.Store.GetCancellationTokenSource(useSaveChangesTimeout: false);
+        using var cts = Ravendb.Store.GetReadCancellationTokenSource();
         await using var results = await session.Advanced.StreamAsync(q, cts.Token);
         while (await results.MoveNextAsync())
         {

@@ -26,7 +26,7 @@ public class PersistenceIds : ContinuousQuery<IndexChange, string>
         var q = session.Advanced.AsyncDocumentQuery<ActorId>(indexName: nameof(ActorsByChangeVector));
         q = _offset.ApplyOffset(q);
 
-        using var cts = Ravendb.Store.GetCancellationTokenSource(useSaveChangesTimeout: false);
+        using var cts = Ravendb.Store.GetReadCancellationTokenSource();
         await using var results = await session.Advanced.StreamAsync(q, cts.Token);
         while (await results.MoveNextAsync())
         {

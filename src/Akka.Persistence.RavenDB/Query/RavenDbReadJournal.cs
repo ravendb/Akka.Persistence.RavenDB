@@ -65,7 +65,7 @@ namespace Akka.Persistence.RavenDb.Query
                 try
                 {
                     using var session = _store.Instance.OpenAsyncSession();
-                    using var cts = _store.GetCancellationTokenSource(useSaveChangesTimeout: false);
+                    using var cts = _store.GetReadCancellationTokenSource();
                     await using var results = await session.Advanced.StreamAsync(session.Query<ActorId>(), cts.Token);
                     while (await results.MoveNextAsync())
                     {
@@ -101,7 +101,7 @@ namespace Akka.Persistence.RavenDb.Query
                 try
                 {
                     using var session = _store.Instance.OpenAsyncSession();
-                    using var cts = _store.GetCancellationTokenSource(useSaveChangesTimeout: false);
+                    using var cts = _store.GetReadCancellationTokenSource();
                     session.Advanced.SessionInfo.SetContext(persistenceId);
 
                     await using var results = await session.Advanced.StreamAsync<Journal.Types.Event>(
@@ -153,7 +153,7 @@ namespace Akka.Persistence.RavenDb.Query
                     var q = session.Advanced.AsyncDocumentQuery<Journal.Types.Event>(nameof(EventsByTagAndChangeVector)).ContainsAny(e => e.Tags, new[] { tag });
                     q = ChangeVectorOffset.Convert(offset).ApplyOffset(q);
 
-                    using var cts = _store.GetCancellationTokenSource(useSaveChangesTimeout: false);
+                    using var cts = _store.GetReadCancellationTokenSource();
                     await using var results = await session.Advanced.StreamAsync(q, cts.Token);
                     while (await results.MoveNextAsync())
                     {
@@ -194,7 +194,7 @@ namespace Akka.Persistence.RavenDb.Query
                     var q = session.Advanced.AsyncDocumentQuery<Journal.Types.Event>(indexName: nameof(EventsByTagAndChangeVector));
                     q = ChangeVectorOffset.Convert(offset).ApplyOffset(q);
 
-                    using var cts = _store.GetCancellationTokenSource(useSaveChangesTimeout: false);
+                    using var cts = _store.GetReadCancellationTokenSource();
                     await using var results = await session.Advanced.StreamAsync(q, cts.Token);
                     while (await results.MoveNextAsync())
                     {

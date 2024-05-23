@@ -1,9 +1,5 @@
-﻿using System.Text;
-using Akka.Actor;
-using Akka.IO;
+﻿using Akka.Actor;
 using Akka.Persistence.Journal;
-using Akka.Persistence.Serialization;
-using Akka.Util;
 
 namespace Akka.Persistence.RavenDb.Journal.Types
 {
@@ -19,12 +15,6 @@ namespace Akka.Persistence.RavenDb.Journal.Types
         public bool IsDeleted;
         public string Manifest;
         public string[] Tags;
-
-        public enum Serialization
-        {
-            Default,
-            Embedded
-        }
 
         public static Event Serialize(Akka.Serialization.Serialization serialization, IPersistentRepresentation message)
         {

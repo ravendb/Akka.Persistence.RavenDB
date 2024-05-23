@@ -8,6 +8,9 @@ using Raven.Client.Documents.Commands.Batches;
 using Raven.Client.Documents.Operations;
 using System.Collections.Concurrent;
 using System.Collections.Immutable;
+using Raven.Client.Exceptions;
+using Akka.Persistence.RavenDb.Query.ContinuousQuery;
+using Raven.Client.Documents.Session;
 
 namespace Akka.Persistence.RavenDb.Journal
 {
@@ -20,7 +23,6 @@ namespace Akka.Persistence.RavenDb.Journal
         
         //requests for the highest sequence number may be made concurrently to writes executing for the same persistenceId.
         private readonly ConcurrentDictionary<string, AsyncReaderWriterLock> _lockPerActor = new ConcurrentDictionary<string, AsyncReaderWriterLock>();
-        
         public RavenDbJournal() : this(RavenDbPersistence.Get(Context.System).JournalConfiguration)
         {
         }
@@ -118,41 +120,96 @@ namespace Akka.Persistence.RavenDb.Journal
             Action<IPersistentRepresentation> recoveryCallback)
         {
             using var session = _store.Instance.OpenAsyncSession();
-            using var cts = _store.GetCancellationTokenSource(useSaveChangesTimeout: false);
+            using var cts = _store.GetReadCancellationTokenSource(TimeSpan.FromMinutes(5));
+
             session.Advanced.SessionInfo.SetContext(persistenceId);
-            
-            await using var results = await session.Advanced.StreamAsync<Types.Event>(startsWith: _store.GetEventPrefix(persistenceId), startAfter: _store.GetSequenceId(persistenceId, fromSequenceNr - 1), token: cts.Token);
-            while (max > 0 && await results.MoveNextAsync())
+            var node = await session.Advanced.GetCurrentSessionNode();
+            var prefix = _store.GetEventPrefix(persistenceId);
+
+            // metadata document will indicate what is the possible current max sequence on this node
+            var currentMetadata = await session.LoadAsync<Metadata>(_store.GetMetadataId(persistenceId), cts.Token);
+            var currentMax = currentMetadata.MaxSequenceNr;
+
+            // when running in a cluster we can connect to a node that doesn't have all events just yet.
+            // so we subscribe to the node to get notified when new events for this actor will arrive
+            var waiter = new AsyncManualResetEvent();
+            var changes = _store.Instance.Changes(_store.Instance.Database, node.ClusterTag).ForDocumentsStartingWith(prefix);
+            using var prefixChanges = changes.Subscribe(_ => waiter.Set());
+
+            await changes.EnsureSubscribedNow();
+
+            while (true)
             {
-                var message = results.Current.Document;
-                if (message.SequenceNr > toSequenceNr)
+                await using var results = await session.Advanced.StreamAsync<Types.Event>(startsWith: _store.GetEventPrefix(persistenceId), startAfter: _store.GetSequenceId(persistenceId, fromSequenceNr - 1), token: cts.Token);
+                while (await results.MoveNextAsync())
+                {
+                    if (max <= 0)
+                        return;
+
+                    var message = results.Current.Document;
+                    if (message.SequenceNr > toSequenceNr)
+                        return;
+
+                    var persistent = Types.Event.Deserialize(_serialization, message, context.Sender);
+                    recoveryCallback(persistent);
+                    
+                    max--;
+                    if (message.SequenceNr == toSequenceNr)
+                        return;
+
+                    fromSequenceNr = message.SequenceNr;
+                }
+
+                // no more events could be found for this actor
+                if (currentMax >= toSequenceNr)
                     return;
 
-                var persistent = Types.Event.Deserialize(_serialization, message, context.Sender);
-                recoveryCallback(persistent);
-                max--;
+                await waiter.WaitAsync(cts.Token);
+                waiter.Reset();
             }
         }
 
+        // we read the metadata document from all member nodes in order to ensure recovery to the latest state
         public override async Task<long> ReadHighestSequenceNrAsync(string persistenceId, long fromSequenceNr)
         {
             using (await GetLocker(persistenceId).WriterLockAsync())
             {
                 using var session = _store.Instance.OpenAsyncSession();
-                using var cts = _store.GetCancellationTokenSource(useSaveChangesTimeout: true);
-                session.Advanced.SessionInfo.SetContext(persistenceId);
+                using var cts = _store.GetReadCancellationTokenSource();
+                var maxSequenceNr = 0L;
+                var id = _store.GetMetadataId(persistenceId);
+                foreach (var node in _store.Topology.Nodes)
+                {
+                    var doc = await _store.Instance.Maintenance.SendAsync(new GetDocumentOperation<Metadata>(id, node.ClusterTag), cts.Token);
+                    if (doc == null)
+                        continue;
+                   
+                    maxSequenceNr = Math.Max(maxSequenceNr, doc.MaxSequenceNr);
+                }
 
-                var metadata = await session.LoadAsync<Metadata>(_store.GetMetadataId(persistenceId), cts.Token);
-                return metadata?.MaxSequenceNr ?? 0;
-
-                // TODO read last event with the prefix of 'persistenceId' 
+                return maxSequenceNr;
             }
         }
 
+        
+
+        /// <summary>
+        /// Each <see cref="AtomicWrite"/> message will be unwrapped and create one document per <see cref="IPersistentRepresentation"/> with the following ID format 'Events/[PersistenceId]/[SequenceNr]'<br/>
+        /// All those documents will be persisted atomically in a single transaction.<para/>
+        /// 
+        /// As part of the transaction will also update a metadata document for the given actor with the ID of 'Metadatas/[PersistenceId]', which we use for concurrency check and keep the latest SequenceNr <br/>  
+        /// For a newly created actor we will also create an immutable document with the ID 'UniqueActors/[PersistenceId]' that we use for <see cref="RavenDbReadJournal.PersistenceIds"/> and <see cref="RavenDbReadJournal.CurrentPersistenceIds"/> queries.<para/>
+        /// 
+        /// We prefer availability and performance over consistency, so we wait for the transaction to be persistent on one node <br/>
+        /// It may happen that two writes will go to different nodes, to ensure gap less sequence of events we check on the server-side and allow to persist only the next sequence events (if latest is 100, so we can persist only 101), otherwise we will throw <see cref="ConcurrencyException"/> 
+        /// </summary>
+        /// <param name="messages"></param>
+        /// <exception cref="ConcurrencyException"></exception>
+        /// <returns></returns>
         protected override async Task<IImmutableList<Exception?>> WriteMessagesAsync(IEnumerable<AtomicWrite> messages)
         {
             var builder = ImmutableList.CreateBuilder<Exception?>();
-            using var cts = _store.GetCancellationTokenSource(useSaveChangesTimeout: true);
+            using var cts = _store.GetWriteCancellationTokenSource();
             var writes = new Dictionary<string, Task>();
             var original = messages.ToList();
 
@@ -233,7 +290,9 @@ namespace Akka.Persistence.RavenDb.Journal
 
             if (Persistence.QueryConfiguration.WaitForNonStale) // used for tests
                 session.Advanced.WaitForIndexesAfterSaveChanges();
-            
+
+            _store.SetConsistencyLevel(_configuration, session);
+
             await session.SaveChangesAsync(cts.Token);
         }
 
@@ -244,9 +303,9 @@ namespace Akka.Persistence.RavenDb.Journal
             do
             {
                 deleted = 0;
-                using var cts = _store.GetCancellationTokenSource(useSaveChangesTimeout: false);
+                using var readCts = _store.GetReadCancellationTokenSource();
                 using var session = _store.Instance.OpenAsyncSession();
-                await using var results = await session.Advanced.StreamAsync<Types.Event>(startsWith: _store.GetEventPrefix(persistenceId), pageSize: batch, token: cts.Token);
+                await using var results = await session.Advanced.StreamAsync<Types.Event>(startsWith: _store.GetEventPrefix(persistenceId), pageSize: batch, token: readCts.Token);
                 while (await results.MoveNextAsync())
                 {
                     var current = results.Current.Document;
@@ -256,7 +315,9 @@ namespace Akka.Persistence.RavenDb.Journal
                     deleted++;
                     session.Delete(current.Id);
                 }
-                await session.SaveChangesAsync(cts.Token);
+
+                using var writeCts = _store.GetReadCancellationTokenSource();
+                await session.SaveChangesAsync(writeCts.Token);
             } while (deleted == batch);
         }
 

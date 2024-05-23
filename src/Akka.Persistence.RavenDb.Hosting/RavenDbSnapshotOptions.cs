@@ -35,7 +35,7 @@ namespace Akka.Persistence.RavenDb.Hosting
                 sb.AppendLine($"name = {Name.ToHocon()}");
 
             if(Urls is not null && Urls.Length > 0)
-                sb.AppendLine($"urls = [{string.Join(',', Urls.Select(x => x.ToHocon()))}]");
+                sb.AppendLine($"urls = [{string.Join(",", Urls.Select(x => x.ToHocon()))}]");
 
             if (CertificatePath is not null)
                 sb.AppendLine($"certificate-path = {CertificatePath.ToHocon()}");

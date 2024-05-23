@@ -1,10 +1,16 @@
 ﻿using Akka.Configuration;
 using Raven.Client.Documents.Conventions;
-using System.Security.Cryptography.X509Certificates;
 
 namespace Akka.Persistence.RavenDb
 {
-    public class RavenDbConfiguration
+    public enum ConsistencyLevel
+    {
+        Single,
+        Majority,
+       // ClusterWide - Not supported yet
+    }
+
+    public abstract class RavenDbConfiguration
     {
         public readonly string Name;
         public readonly string[] Urls;
@@ -13,14 +19,14 @@ namespace Akka.Persistence.RavenDb
         public readonly Version? HttpVersion;
         public readonly bool? DisableTcpCompression;
         public readonly TimeSpan SaveChangesTimeout;
+        public readonly TimeSpan ReadTimeout;
+        public readonly ConsistencyLevel ConsistencyLevel;
         /// <summary>
         /// Flag determining whether the database should be automatically initialized.
         /// </summary>
         public bool AutoInitialize { get; private set; }
 
-        //TODO stav: currently impossible to change timeout of stream (only save-changes timeout). Should add support for this?
-
-        public RavenDbConfiguration(Config config)
+        protected RavenDbConfiguration(Config config)
         {
             Name = config.GetString("name") ?? throw new ArgumentException("name must be provided");
             Urls = config.GetStringList("urls")?.ToArray() ?? throw new ArgumentException("urls must be provided");
@@ -42,7 +48,9 @@ namespace Akka.Persistence.RavenDb
             }
             
             DisableTcpCompression = config.GetBoolean("disable-tcp-compression");
-            SaveChangesTimeout = config.GetTimeSpan("save-changes-timeout", TimeSpan.FromSeconds(15));
+            SaveChangesTimeout = config.GetTimeSpan("save-changes-timeout", TimeSpan.FromSeconds(30));
+            ReadTimeout = config.GetTimeSpan("read-timeout", TimeSpan.FromSeconds(60));
+            ConsistencyLevel = (ConsistencyLevel)Enum.Parse(typeof(ConsistencyLevel), config.GetString("consistency-level"), ignoreCase: true);
         }
 
         public DocumentConventions ToDocumentConventions()
