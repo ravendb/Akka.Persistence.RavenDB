@@ -1,16 +1,24 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
-
   <PropertyGroup>
+    <PackageId>Akka.Persistence.RavenDB</PackageId>
+    <Product>Akka Persistence for RavenDB</Product>
+    <Title>Akka Persistence for RavenDB</Title>
+    <Description>RavenDB Client is the client library for accessing RavenDB</Description>
+
     <OutputType>Library</OutputType>
     <TargetFramework>netstandard2.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-    <LangVersion>latest</LangVersion>
+
   </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\CommonAssemblyInfo.cs" Link="Properties\CommonAssemblyInfo.cs" />
+  </ItemGroup>
 
   <ItemGroup>
     <EmbeddedResource Include="reference.conf">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </EmbeddedResource>
+
+    <EmbeddedResource Include="ChangeVectorAnalyzer.cs">
     </EmbeddedResource>
   </ItemGroup>
 
@@ -18,4 +26,5 @@
     <PackageReference Include="Akka.Persistence.Query" Version="1.5.15" />
     <PackageReference Include="RavenDB.Client" Version="6.0.2" />
   </ItemGroup>
+
 </Project>

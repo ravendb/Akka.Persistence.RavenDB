@@ -1,11 +1,16 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
-
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-  </PropertyGroup>
+    <PackageId>Akka.Persistence.Hosting.RavenDB</PackageId>
+    <Product>Akka Persistence Hosting for RavenDB</Product>
+    <Title>Akka Persistence Hosting for RavenDB</Title>
+    <Description>RavenDB Client is the client library for accessing RavenDB</Description>
 
+    <OutputType>Library</OutputType>
+    <TargetFramework>netstandard2.0</TargetFramework>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\CommonAssemblyInfo.cs" Link="Properties\CommonAssemblyInfo.cs" />
+  </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Akka.Persistence.Hosting" Version="1.5.15" />
   </ItemGroup>
@@ -13,5 +18,4 @@
   <ItemGroup>
     <ProjectReference Include="..\Akka.Persistence.RavenDB\Akka.Persistence.RavenDb.csproj" />
   </ItemGroup>
-
 </Project>

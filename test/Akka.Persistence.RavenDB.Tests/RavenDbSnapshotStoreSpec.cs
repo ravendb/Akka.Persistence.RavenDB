@@ -12,12 +12,13 @@ namespace Akka.Persistence.RavenDb.Tests
         {
             _databaseName = databaseName;
             Initialize();
+            Output.WriteLine($"Create {databaseName}");
         }
 
         protected override void Dispose(bool disposing)
         {
             base.Dispose(disposing);
-            TestDriverExtension.DeleteDatabase(_databaseName);
+            // TestDriverExtension.DeleteDatabase(_databaseName);
         }
     }
 }

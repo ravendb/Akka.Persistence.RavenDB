@@ -1,0 +1,21 @@
+﻿<Project>
+  <PropertyGroup>
+    <Version></Version>
+    <PackageIconUrl>http://static.ravendb.net/logo-for-nuget.png</PackageIconUrl>
+    <PackageIcon>icon.png</PackageIcon>
+    <PackageProjectUrl>https://ravendb.net</PackageProjectUrl>
+    <PackageRequireLicenseAcceptance>true</PackageRequireLicenseAcceptance>
+    <RepositoryType>git</RepositoryType>
+    <Authors>Hibernating Rhinos</Authors>
+    <PackageTags>akka;ravendb</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\..\scripts\assets\icon.png" Pack="true" Visible="false" PackagePath="" />
+  </ItemGroup>
+</Project>
