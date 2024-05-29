@@ -12,7 +12,6 @@ namespace Akka.Persistence.RavenDb.Tests
         {
             _databaseName = databaseName;
             Initialize();
-            Output.WriteLine($"Create {databaseName}");
         }
 
         protected override void Dispose(bool disposing)

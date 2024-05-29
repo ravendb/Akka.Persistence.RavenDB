@@ -10,28 +10,25 @@ namespace Akka.Persistence.RavenDb.Journal;
 internal class GetDocumentOperation<T> : IMaintenanceOperation<T>
 {
     private readonly string _id;
-    private readonly string _node;
 
-    public GetDocumentOperation(string id, string node)
+    public GetDocumentOperation(string id)
     {
         _id = id;
-        _node = node;
     }
 
     public RavenCommand<T> GetCommand(DocumentConventions conventions, JsonOperationContext context)
     {
-        return new GetDocumentsCommand(_id, _node, conventions);
+        return new GetDocumentsCommand(_id, conventions);
     }
     private class GetDocumentsCommand : RavenCommand<T>
     {
         private readonly string _id;
         private readonly DocumentConventions _conventions;
 
-        public GetDocumentsCommand(string id, string node, DocumentConventions conventions)
+        public GetDocumentsCommand(string id, DocumentConventions conventions)
         {
             _id = id;
             _conventions = conventions;
-            SelectedNodeTag = node;
         }
 
         public override HttpRequestMessage CreateRequest(JsonOperationContext ctx, ServerNode node, out string url)

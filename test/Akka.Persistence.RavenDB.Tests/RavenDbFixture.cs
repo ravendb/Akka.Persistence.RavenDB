@@ -17,7 +17,6 @@ namespace Akka.Persistence.RavenDb.Tests
                 return;
             }
 
-            /*
             var options = new TestServerOptions
             {
                 ServerUrl = Urls[0],
@@ -25,7 +24,7 @@ namespace Akka.Persistence.RavenDb.Tests
             };
 
             var server = EmbeddedServer.Instance;
-            server.StartServer(options);*/
+            server.StartServer(options);
         }
 
         // For every test (actor system) this is called
@@ -57,7 +56,7 @@ namespace Akka.Persistence.RavenDb.Tests
                                               event-adapter-bindings = {
                                                   "System.String" = color-tagger
                                               }
-                                              consistency-level = "majority"
+                                              save-changes-mode = "clusterwide"
                                          }
                                      }
                                      snapshot-store {
@@ -69,7 +68,7 @@ namespace Akka.Persistence.RavenDb.Tests
                                               save-changes-timeout = 30s
                                               certificate-path = "{{{{{(Secure ? CertificatePath : "" )}}}}}"
                                               http-version = "2.0"
-                                              consistency-level = "majority"
+                                              save-changes-mode = "clusterwide"
                                           }
                                       }
                                       query {

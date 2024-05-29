@@ -23,7 +23,7 @@ public class PersistenceIds : ContinuousQuery<IndexChange, string>
     {
         using var session = Ravendb.Store.Instance.OpenAsyncSession();
         
-        var q = session.Advanced.AsyncDocumentQuery<ActorId>(indexName: nameof(ActorsByChangeVector));
+        var q = session.Advanced.AsyncDocumentQuery<UniqueActor>(indexName: nameof(ActorsByChangeVector));
         q = _offset.ApplyOffset(q);
 
         using var cts = Ravendb.Store.GetReadCancellationTokenSource();

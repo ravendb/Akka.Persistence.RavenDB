@@ -66,7 +66,7 @@ namespace Akka.Persistence.RavenDb.Query
                 {
                     using var session = _store.Instance.OpenAsyncSession();
                     using var cts = _store.GetReadCancellationTokenSource();
-                    await using var results = await session.Advanced.StreamAsync(session.Query<ActorId>(), cts.Token).ConfigureAwait(false);
+                    await using var results = await session.Advanced.StreamAsync(session.Query<UniqueActor>(), cts.Token).ConfigureAwait(false);
                     while (await results.MoveNextAsync().ConfigureAwait(false))
                     {
                         var id = results.Current.Document.PersistenceId;
@@ -106,7 +106,7 @@ namespace Akka.Persistence.RavenDb.Query
 
                     await using var results = await session.Advanced.StreamAsync<Journal.Types.Event>(
                         startsWith: _store.GetEventPrefix(persistenceId),
-                        startAfter: _store.GetSequenceId(persistenceId, fromSequenceNr - 1),
+                        startAfter: _store.GetEventSequenceId(persistenceId, fromSequenceNr - 1),
                         token: cts.Token).ConfigureAwait(false);
                     while (await results.MoveNextAsync().ConfigureAwait(false))
                     {
@@ -115,8 +115,8 @@ namespace Akka.Persistence.RavenDb.Query
                             break;
 
                         var persistent = Journal.Types.Event.Deserialize(_serialization, @event, ActorRefs.NoSender);
-                        var e = new EventEnvelope(new Sequence(@event.Timestamp), @event.PersistenceId,
-                            @event.SequenceNr, persistent.Payload, @event.Timestamp, @event.Tags);
+                        var e = new EventEnvelope(new Sequence(@event.Timestamp.Ticks), @event.PersistenceId,
+                            @event.SequenceNr, persistent.Payload, @event.Timestamp.Ticks, @event.Tags);
                         await currentEventsByPersistenceIdChannel.Writer.WriteAsync(e, cts.Token).ConfigureAwait(false);
                     }
 
@@ -159,7 +159,7 @@ namespace Akka.Persistence.RavenDb.Query
                     {
                         var @event = results.Current.Document;
                         var persistent = Journal.Types.Event.Deserialize(_serialization, @event, ActorRefs.NoSender);
-                        var e = new EventEnvelope(new ChangeVectorOffset(results.Current.ChangeVector), @event.PersistenceId, @event.SequenceNr, persistent.Payload, @event.Timestamp, @event.Tags);
+                        var e = new EventEnvelope(new ChangeVectorOffset(results.Current.ChangeVector), @event.PersistenceId, @event.SequenceNr, persistent.Payload, @event.Timestamp.Ticks, @event.Tags);
                         await currentEventsByTag.Writer.WriteAsync(e, cts.Token).ConfigureAwait(false);
                     }
 
@@ -200,7 +200,7 @@ namespace Akka.Persistence.RavenDb.Query
                     {
                         var @event = results.Current.Document;
                         var persistent = Journal.Types.Event.Deserialize(_serialization, @event, ActorRefs.NoSender);
-                        var e = new EventEnvelope(new ChangeVectorOffset(results.Current.ChangeVector), @event.PersistenceId, @event.SequenceNr, persistent.Payload, @event.Timestamp, @event.Tags);
+                        var e = new EventEnvelope(new ChangeVectorOffset(results.Current.ChangeVector), @event.PersistenceId, @event.SequenceNr, persistent.Payload, @event.Timestamp.Ticks, @event.Tags);
                         await currentAllEvents.Writer.WriteAsync(e, cts.Token).ConfigureAwait(false);
                     }
 

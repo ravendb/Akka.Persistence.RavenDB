@@ -31,7 +31,7 @@ public class EventsByPersistenceId : ContinuousQuery<DocumentChange>
 
         using var cts = Ravendb.Store.GetReadCancellationTokenSource();
         await using var results = await session.Advanced.StreamAsync<Journal.Types.Event>(startsWith: Ravendb.Store.GetEventPrefix(_persistenceId),
-            startAfter: Ravendb.Store.GetSequenceId(_persistenceId, _fromSequenceNr), token: cts.Token).ConfigureAwait(false);
+            startAfter: Ravendb.Store.GetEventSequenceId(_persistenceId, _fromSequenceNr), token: cts.Token).ConfigureAwait(false);
         while (await results.MoveNextAsync().ConfigureAwait(false))
         {
             var @event = results.Current.Document;
@@ -39,7 +39,7 @@ public class EventsByPersistenceId : ContinuousQuery<DocumentChange>
                 break;
 
             var persistent = Journal.Types.Event.Deserialize(Ravendb.Storage.Serialization, @event, ActorRefs.NoSender);
-            var e = new EventEnvelope(new Sequence(@event.Timestamp), @event.PersistenceId, @event.SequenceNr, persistent.Payload, @event.Timestamp,
+            var e = new EventEnvelope(new Sequence(@event.Timestamp.Ticks), @event.PersistenceId, @event.SequenceNr, persistent.Payload, @event.Timestamp.Ticks,
                 @event.Tags);
             await Channel.Writer.WriteAsync(e, cts.Token).ConfigureAwait(false);
             _fromSequenceNr = e.SequenceNr;

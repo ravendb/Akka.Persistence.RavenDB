@@ -1,7 +1,11 @@
 ﻿using Akka.Actor;
 using Akka.Configuration;
+using Akka.Persistence.RavenDb.Snapshot.Types;
 using Akka.Persistence.Snapshot;
+using Raven.Client.Documents.Commands.Batches;
+using Raven.Client.Documents.Operations;
 using Raven.Client.Documents.Session;
+using Raven.Client.Http;
 
 namespace Akka.Persistence.RavenDb.Snapshot
 {
@@ -88,18 +92,27 @@ namespace Akka.Persistence.RavenDb.Snapshot
 
         protected override async Task<SelectedSnapshot> LoadAsync(string persistenceId, SnapshotSelectionCriteria criteria)
         {
-            // TODO: add API to scan backwards
+            // need to find the most up-to-date snapshot
+            // TODO: add API to scan backwards !!
+            // or create an index
+
             using var session = _store.Instance.OpenAsyncSession();
             using var cts = _store.GetReadCancellationTokenSource();
             session.Advanced.SessionInfo.SetContext(persistenceId);
 
-            await using var results = await session.Advanced.StreamAsync<Snapshot>(startsWith: GetSnapshotPrefix(persistenceId), startAfter: GetSnapshotId(persistenceId, criteria.MinSequenceNr - 1), token: cts.Token).ConfigureAwait(false);
-            Snapshot lastValidSnapshot = null; // yuck!
+            session.Advanced.SetTransactionMode(_configuration.SaveChangesMode == SaveChangesMode.ClusterWide
+                ? TransactionMode.ClusterWide
+                : TransactionMode.SingleNode);
+
+            await using var results = await session.Advanced.StreamAsync<Types.Snapshot>(startsWith: GetSnapshotPrefix(persistenceId), startAfter: GetSnapshotId(persistenceId, criteria.MinSequenceNr - 1), token: cts.Token).ConfigureAwait(false);
+            Types.Snapshot lastValidSnapshot = null; // yuck!
             while (await results.MoveNextAsync().ConfigureAwait(false)) 
             {
                 var current = results.Current.Document;
-                var isBetween = criteria.MinTimestamp <= current.Timestamp && criteria.MaxTimeStamp >= current.Timestamp; 
-                if (current.SequenceNr <= criteria.MaxSequenceNr && isBetween)
+                var validTime = criteria.MinTimestamp <= current.Timestamp && criteria.MaxTimeStamp >= current.Timestamp;
+                var validSequence = criteria.MinSequenceNr <= current.SequenceNr && criteria.MaxSequenceNr >= current.SequenceNr;
+
+                if (validSequence && validTime)
                 {
                     lastValidSnapshot = results.Current.Document;
                 }
@@ -118,10 +131,33 @@ namespace Akka.Persistence.RavenDb.Snapshot
             session.Advanced.SessionInfo.SetContext(metadata.PersistenceId);
 
             using var cts = _store.GetWriteCancellationTokenSource();
-            await session.StoreAsync(Snapshot.Serialize(_serialization, metadata, snapshot), id, cts.Token).ConfigureAwait(false);
-
-            _store.SetConsistencyLevel(_configuration, session);
-
+            var snapshotEntity = Types.Snapshot.Serialize(_serialization, metadata, snapshot);
+            switch (_configuration.SaveChangesMode)
+            {
+                case SaveChangesMode.ClusterWide:
+                    session.Advanced.SetTransactionMode(TransactionMode.ClusterWide);
+                    var current = await session.LoadAsync<Types.Snapshot>(id, cts.Token).ConfigureAwait(false);
+                    if (current == null)
+                    {
+                        await session.StoreAsync(snapshotEntity, id, cts.Token).ConfigureAwait(false);
+                    }
+                    else
+                    {
+                        snapshotEntity.CopyTo(current);
+                    }
+                    break;
+                case SaveChangesMode.Majority:
+                    var topology = await _store.GetTopologyAsync().ConfigureAwait(false);
+                    var majority = topology.Nodes.Count / 2;
+                    session.Advanced.WaitForReplicationAfterSaveChanges(replicas: majority);
+                    goto case SaveChangesMode.Single;
+                case SaveChangesMode.Single:
+                    await session.StoreAsync(snapshotEntity, id, cts.Token).ConfigureAwait(false);
+                    break;
+                
+                default:
+                    throw new ArgumentOutOfRangeException($"Not supported {nameof(SaveChangesMode)}: {_configuration.SaveChangesMode}");
+            }
             await session.SaveChangesAsync(cts.Token).ConfigureAwait(false);
         }
 
@@ -130,6 +166,11 @@ namespace Akka.Persistence.RavenDb.Snapshot
             var id = GetSnapshotId(metadata);
             using var session = _store.Instance.OpenAsyncSession();
             session.Advanced.SessionInfo.SetContext(metadata.PersistenceId);
+
+            session.Advanced.SetTransactionMode(_configuration.SaveChangesMode == SaveChangesMode.ClusterWide
+                ? TransactionMode.ClusterWide
+                : TransactionMode.SingleNode);
+
             using var cts = _store.GetWriteCancellationTokenSource();
             session.Delete(id);
             await session.SaveChangesAsync(cts.Token).ConfigureAwait(false);
@@ -141,6 +182,10 @@ namespace Akka.Persistence.RavenDb.Snapshot
             using var session = _store.Instance.OpenAsyncSession();
             using var readCts = _store.GetReadCancellationTokenSource();
             session.Advanced.SessionInfo.SetContext(persistenceId);
+
+            session.Advanced.SetTransactionMode(_configuration.SaveChangesMode == SaveChangesMode.ClusterWide
+                ? TransactionMode.ClusterWide
+                : TransactionMode.SingleNode);
 
             await using var results = await session.Advanced.StreamAsync<SnapshotMetadata>(startsWith: GetSnapshotPrefix(persistenceId), startAfter: GetSnapshotId(persistenceId, criteria.MinSequenceNr - 1), token: readCts.Token).ConfigureAwait(false);
             while (await results.MoveNextAsync().ConfigureAwait(false))

@@ -1,7 +1,7 @@
 ﻿using Akka.Serialization;
 using Akka.Util;
 
-namespace Akka.Persistence.RavenDb.Snapshot;
+namespace Akka.Persistence.RavenDb.Snapshot.Types;
 
 public class Snapshot
 {
@@ -12,6 +12,18 @@ public class Snapshot
     public int SerializationId;
     public object Payload;
 
+
+    public void CopyTo(Snapshot copy)
+    {
+        if (copy.SequenceNr != SequenceNr)
+            throw new InvalidOperationException($"You can't modify '{copy.PersistenceId}' with sequence '{copy.SequenceNr}', existing sequence is {SequenceNr}");
+
+        copy.Timestamp = Timestamp;
+        copy.PersistenceId = PersistenceId;
+        copy.Manifest = Manifest;
+        copy.SerializationId = SerializationId;
+        copy.Payload = Payload;
+    }
     public static Snapshot Serialize(Akka.Serialization.Serialization serialization, SnapshotMetadata metadata, object payload)
     {
         var snapshot = new Snapshot

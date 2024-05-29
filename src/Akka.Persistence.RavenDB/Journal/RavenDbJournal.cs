@@ -11,6 +11,7 @@ using System.Collections.Immutable;
 using Raven.Client.Exceptions;
 using Akka.Persistence.RavenDb.Query.ContinuousQuery;
 using Raven.Client.Documents.Session;
+using Raven.Client.Http;
 
 namespace Akka.Persistence.RavenDb.Journal
 {
@@ -127,21 +128,23 @@ namespace Akka.Persistence.RavenDb.Journal
             var prefix = _store.GetEventPrefix(persistenceId);
 
             // metadata document will indicate what is the possible current max sequence on this node
-            var currentMetadata = await session.LoadAsync<Metadata>(_store.GetMetadataId(persistenceId), cts.Token).ConfigureAwait(false);
+            var currentMetadata = await session.LoadAsync<EventMetadata>(_store.GetEventMetadataId(persistenceId), cts.Token).ConfigureAwait(false);
             var currentMax = currentMetadata.MaxSequenceNr;
 
             // when running in a cluster we can connect to a node that doesn't have all events just yet.
             // so we subscribe to the node to get notified when new events for this actor will arrive
             var waiter = new AsyncManualResetEvent();
-            var changes = _store.Instance.Changes(_store.Instance.Database, node.ClusterTag).ForDocumentsStartingWith(prefix);
-            using var prefixChanges = changes.Subscribe(_ => waiter.Set());
+            var changes = _store.Instance.Changes(_store.Instance.Database, node.ClusterTag);
+            await changes.EnsureConnectedNow().ConfigureAwait(false);
 
-            await changes.EnsureSubscribedNow().ConfigureAwait(false);
+            var prefixChanges = changes.ForDocumentsStartingWith(prefix);
+            using var subscribe = prefixChanges.Subscribe(_ => waiter.Set());
+            await prefixChanges.EnsureSubscribedNow().ConfigureAwait(false);
 
             while (true)
             {
                 await using var results = await session.Advanced.StreamAsync<Types.Event>(startsWith: _store.GetEventPrefix(persistenceId),
-                    startAfter: _store.GetSequenceId(persistenceId, fromSequenceNr - 1), token: cts.Token).ConfigureAwait(false);
+                    startAfter: _store.GetEventSequenceId(persistenceId, fromSequenceNr - 1), token: cts.Token).ConfigureAwait(false);
                 while (await results.MoveNextAsync().ConfigureAwait(false))
                 {
                     if (max <= 0)
@@ -177,15 +180,28 @@ namespace Akka.Persistence.RavenDb.Journal
             {
                 using var session = _store.Instance.OpenAsyncSession();
                 using var cts = _store.GetReadCancellationTokenSource();
+                var id = _store.GetEventMetadataId(persistenceId);
+
+                if (_configuration.SaveChangesMode == SaveChangesMode.ClusterWide)
+                {
+                    // it is possible to read not the most up-to-date value here,
+                    // but in such case we will fail to store and run the recovery again
+                    session.Advanced.SetTransactionMode(TransactionMode.ClusterWide);
+                    var compareExchange = await session.LoadAsync<EventMetadata>(id, cts.Token).ConfigureAwait(false);
+                    return compareExchange?.MaxSequenceNr ?? 0;
+                }
+
                 var maxSequenceNr = 0L;
-                var id = _store.GetMetadataId(persistenceId);
                 var topology = await _store.GetTopologyAsync().ConfigureAwait(false);
                 foreach (var node in topology.Nodes)
                 {
-                    var doc = await _store.Instance.Maintenance.SendAsync(new GetDocumentOperation<Metadata>(id, node.ClusterTag), cts.Token).ConfigureAwait(false);
+                    if (node.ServerRole != ServerNode.Role.Member)
+                        continue;
+                    
+                    var doc = await _store.Instance.Maintenance.ForNode(node.ClusterTag).SendAsync(new GetDocumentOperation<EventMetadata>(id), cts.Token).ConfigureAwait(false);
                     if (doc == null)
                         continue;
-                   
+
                     maxSequenceNr = Math.Max(maxSequenceNr, doc.MaxSequenceNr);
                 }
 
@@ -243,9 +259,11 @@ namespace Akka.Persistence.RavenDb.Journal
             var persistenceId = atomicWrites.Key;
             using var _ = await GetLocker(persistenceId).ReaderLockAsync(cts.Token).ConfigureAwait(false);
             using var session = _store.Instance.OpenAsyncSession();
+
+            if (Persistence.QueryConfiguration.WaitForNonStale) // used for tests
+                session.Advanced.WaitForIndexesAfterSaveChanges();
+
             session.Advanced.SessionInfo.SetContext(persistenceId);
-            // TODO stav: might need to set transaction mode here
-            // session.Advanced.SetTransactionMode(mode);
 
             var highest = long.MinValue;
             var lowest = long.MaxValue;
@@ -259,40 +277,68 @@ namespace Akka.Persistence.RavenDb.Journal
 
                 foreach (var representation in payload)
                 {
-                    var id = _store.GetSequenceId(representation.PersistenceId, representation.SequenceNr);
+                    var id = _store.GetEventSequenceId(representation.PersistenceId, representation.SequenceNr);
                     var journalEvent = Types.Event.Serialize(_serialization, representation);
-                    // events are immutable and should always be new 
-                    await session.StoreAsync(journalEvent, changeVector: string.Empty, id, cts.Token).ConfigureAwait(false);
+                    await session.StoreAsync(journalEvent, id, cts.Token).ConfigureAwait(false);
                 }
             }
+            var metadataId = _store.GetEventMetadataId(persistenceId);
 
-            var metadataId = _store.GetMetadataId(persistenceId);
-            session.Advanced.Defer(new PatchCommandData(metadataId, changeVector: null, patch: new PatchRequest
+            switch (_configuration.SaveChangesMode)
             {
-                Script = Metadata.UpdateScript,
-                Values = new Dictionary<string, object>
-                {
-                    [nameof(Metadata.MaxSequenceNr)] = highest,
-                    ["check"] = lowest - 1,
-                }
-            }, new PatchRequest
-            {
-                Script = Metadata.CreateNewScript,
-                Values = new Dictionary<string, object>
-                {
-                    [nameof(Metadata.PersistenceId)] = persistenceId,
-                    [nameof(Metadata.MaxSequenceNr)] = highest,
-                    ["collection"] = _store.EventsMetadataCollection,
-                    ["type"] = _store.Instance.Conventions.FindClrTypeName(typeof(Metadata)),
-                    ["collection2"] = _store.Instance.Conventions.FindCollectionName(typeof(ActorId)),
-                    ["type2"] = _store.Instance.Conventions.FindClrTypeName(typeof(ActorId))
-                }
-            }));
+                case SaveChangesMode.ClusterWide:
+                    session.Advanced.SetTransactionMode(TransactionMode.ClusterWide);
+                    var metadata = await session.LoadAsync<EventMetadata>(metadataId, cts.Token).ConfigureAwait(false);
+                    if (metadata == null)
+                    {
+                        await session.StoreAsync(new UniqueActor
+                        {
+                            PersistenceId = persistenceId,
+                        }, $"UniqueActors/{persistenceId}", cts.Token).ConfigureAwait(false);
 
-            if (Persistence.QueryConfiguration.WaitForNonStale) // used for tests
-                session.Advanced.WaitForIndexesAfterSaveChanges();
+                        metadata = new EventMetadata
+                        {
+                            PersistenceId = persistenceId,
+                            MaxSequenceNr = highest
+                        };
+                        await session.StoreAsync(metadata, metadataId, cts.Token).ConfigureAwait(false);
+                    }
+                    metadata.Timestamp = DateTime.UtcNow;
+                    metadata.MaxSequenceNr = highest;
+                    break;
+                case SaveChangesMode.Majority:
+                    var topology = await _store.GetTopologyAsync().ConfigureAwait(false);
+                    var majority = topology.Nodes.Count / 2;
+                    session.Advanced.WaitForReplicationAfterSaveChanges(replicas: majority);
+                    goto case SaveChangesMode.Single;
 
-            _store.SetConsistencyLevel(_configuration, session);
+                case SaveChangesMode.Single:
+                    session.Advanced.Defer(new PatchCommandData(metadataId, changeVector: null, patch: new PatchRequest
+                    {
+                        Script = EventMetadata.UpdateScript,
+                        Values = new Dictionary<string, object>
+                        {
+                            [nameof(EventMetadata.MaxSequenceNr)] = highest,
+                            [nameof(EventMetadata.ScriptArgs.ConcurrencyCheck)] = lowest - 1,
+                        }
+                    }, patchIfMissing: new PatchRequest
+                    {
+                        Script = EventMetadata.CreateNewScript,
+                        Values = new Dictionary<string, object>
+                        {
+                            [nameof(EventMetadata.PersistenceId)] = persistenceId,
+                            [nameof(EventMetadata.MaxSequenceNr)] = highest,
+                            [nameof(EventMetadata.ScriptArgs.MetadataCollection)] = _store.EventsMetadataCollection,
+                            [nameof(EventMetadata.ScriptArgs.MetadataType)] = _store.Instance.Conventions.FindClrTypeName(typeof(EventMetadata)),
+                            [nameof(EventMetadata.ScriptArgs.UniqueActorCollection)] = _store.Instance.Conventions.FindCollectionName(typeof(UniqueActor)),
+                            [nameof(EventMetadata.ScriptArgs.UniqueActorType)] = _store.Instance.Conventions.FindClrTypeName(typeof(UniqueActor))
+                        }
+                    }));
+                    break;
+                
+                default:
+                    throw new ArgumentOutOfRangeException($"Not supported {nameof(SaveChangesMode)}: {_configuration.SaveChangesMode}");
+            }
 
             await session.SaveChangesAsync(cts.Token).ConfigureAwait(false);
         }
@@ -306,7 +352,13 @@ namespace Akka.Persistence.RavenDb.Journal
                 deleted = 0;
                 using var readCts = _store.GetReadCancellationTokenSource();
                 using var session = _store.Instance.OpenAsyncSession();
-                await using var results = await session.Advanced.StreamAsync<Types.Event>(startsWith: _store.GetEventPrefix(persistenceId), pageSize: batch, token: readCts.Token).ConfigureAwait(false);
+                
+                session.Advanced.SetTransactionMode(_configuration.SaveChangesMode == SaveChangesMode.ClusterWide
+                    ? TransactionMode.ClusterWide
+                    : TransactionMode.SingleNode);
+
+                await using var results = await session.Advanced
+                    .StreamAsync<Types.Event>(startsWith: _store.GetEventPrefix(persistenceId), pageSize: batch, token: readCts.Token).ConfigureAwait(false);
                 while (await results.MoveNextAsync().ConfigureAwait(false))
                 {
                     var current = results.Current.Document;

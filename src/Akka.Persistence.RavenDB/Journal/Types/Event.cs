@@ -10,7 +10,7 @@ namespace Akka.Persistence.RavenDb.Journal.Types
         public long SequenceNr;
         public object Payload;
         public int SerializationId;
-        public long Timestamp;
+        public DateTime Timestamp;
         public string WriterGuid;
         public bool IsDeleted;
         public string Manifest;
@@ -30,7 +30,7 @@ namespace Akka.Persistence.RavenDb.Journal.Types
 
             message = new EventSerializeModifications(message).Get(out var tags);
             e.Tags = tags;
-            e.Timestamp = message.Timestamp;
+            e.Timestamp = new DateTime(message.Timestamp, DateTimeKind.Utc);
 
             var serializer = serialization.FindSerializerFor(message.Payload);
 
@@ -52,7 +52,7 @@ namespace Akka.Persistence.RavenDb.Journal.Types
         {
             if (@event.SerializationId == 1)
                 return new Persistent(@event.Payload, @event.SequenceNr, @event.PersistenceId, @event.Manifest, @event.IsDeleted, sender, @event.WriterGuid,
-                    @event.Timestamp);
+                    @event.Timestamp.Ticks);
 
             var r = (Persistent)serialization.Deserialize((byte[])@event.Payload, @event.SerializationId, @event.Manifest);
             return r;

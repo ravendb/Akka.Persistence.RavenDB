@@ -26,10 +26,6 @@ public class EventsByTag : ContinuousQuery<TimeoutChange>
 
     protected override async Task QueryAsync()
     {
-        /*var stats = await RavenDbPersistence.Instance.Maintenance.ForDatabase(Ravendb.Database).SendAsync(new GetStatisticsOperation());
-        var databaseChangeVector = ChangeVectorAnalyzer.ToList(stats.DatabaseChangeVector);
-        */
-
         using var session = Ravendb.Store.Instance.OpenAsyncSession();
         using var cts = Ravendb.Store.GetReadCancellationTokenSource();
         session.Advanced.SessionInfo.SetContext(_tag);
@@ -44,7 +40,7 @@ public class EventsByTag : ContinuousQuery<TimeoutChange>
             var persistent = Journal.Types.Event.Deserialize(Ravendb.Storage.Serialization, @event, ActorRefs.NoSender);
             _offset = new ChangeVectorOffset(results.Current.ChangeVector);
             var e = new EventEnvelope(_offset, @event.PersistenceId, @event.SequenceNr, persistent.Payload,
-                @event.Timestamp, @event.Tags);
+                @event.Timestamp.Ticks, @event.Tags);
             await Channel.Writer.WriteAsync(e, cts.Token).ConfigureAwait(false);
 
         }

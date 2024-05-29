@@ -22,7 +22,7 @@ namespace Akka.Persistence.RavenDb
     {
         public readonly RavenDbConfiguration Configuration;
         public DocumentStore Instance => _instance.Value;
-        private Lazy<DocumentStore> _instance;
+        private readonly Lazy<DocumentStore> _instance;
 
         public RavenDbStore(RavenDbConfiguration configuration)
         {
@@ -40,19 +40,17 @@ namespace Akka.Persistence.RavenDb
 
         private DocumentStore GetStore()
         {
-            X509Certificate2 cert = null;
-            if (string.IsNullOrEmpty(Configuration.CertificatePath) == false)
-                cert = string.IsNullOrEmpty(Configuration.CertPassword) == false
-                    ? new X509Certificate2(Configuration.CertificatePath, Configuration.CertPassword)
-                    : new X509Certificate2(Configuration.CertificatePath);
-
             var store = new DocumentStore
             {
                 Urls = Configuration.Urls,
                 Conventions = Configuration.ToDocumentConventions(),
                 Database = Configuration.Name,
-                Certificate = cert
             };
+
+            if (string.IsNullOrEmpty(Configuration.CertificatePath) == false)
+                store.Certificate = string.IsNullOrEmpty(Configuration.CertPassword) == false
+                    ? new X509Certificate2(Configuration.CertificatePath, Configuration.CertPassword)
+                    : new X509Certificate2(Configuration.CertificatePath);
 
             store.Conventions.LoadBalanceBehavior = LoadBalanceBehavior.UseSessionContext;
             store.Initialize();
@@ -199,11 +197,11 @@ namespace Akka.Persistence.RavenDb
             return new Status.Failure(new Exception($"Waited too long for indexes to be created."));
         }
 
-        public string GetMetadataId(string persistenceId) => $"{EventsMetadataCollection}/{persistenceId}";
+        public string GetEventMetadataId(string persistenceId) => $"{EventsMetadataCollection}/{persistenceId}";
 
         public string GetEventPrefix(string persistenceId) => $"{EventsCollection}/{persistenceId}/";
 
-        public string GetSequenceId(string persistenceId, long sequenceNr)
+        public string GetEventSequenceId(string persistenceId, long sequenceNr)
         {
             if (sequenceNr <= 0)
                 sequenceNr = 0;
@@ -212,23 +210,9 @@ namespace Akka.Persistence.RavenDb
         }
 
         public string EventsCollection => Instance.Conventions.FindCollectionName(typeof(Journal.Types.Event));
-        public string EventsMetadataCollection => Instance.Conventions.FindCollectionName(typeof(Metadata));
-        public string SnapshotsCollection => Instance.Conventions.FindCollectionName(typeof(Snapshot.Snapshot));
-        
-        public void SetConsistencyLevel(RavenDbConfiguration config, IAsyncDocumentSession session)
-        {
-            switch (config.ConsistencyLevel)
-            {
-                case ConsistencyLevel.Single:
-                    break;
-                case ConsistencyLevel.Majority:
-                    session.Advanced.WaitForReplicationAfterSaveChanges(majority: true);
-                    break;
-                default:
-                    throw new ArgumentOutOfRangeException($"Not supported {nameof(ConsistencyLevel)}: {config.ConsistencyLevel}");
-            }
-        }
-
+        public string EventsMetadataCollection => Instance.Conventions.FindCollectionName(typeof(EventMetadata));
+        public string SnapshotsCollection => Instance.Conventions.FindCollectionName(typeof(Snapshot.Types.Snapshot));
+       
         public void Dispose()
         {
             _stopTokenSource.Cancel();

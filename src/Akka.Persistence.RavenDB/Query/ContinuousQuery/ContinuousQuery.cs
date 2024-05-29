@@ -26,10 +26,11 @@ public abstract class ContinuousQuery<TChange, TInput> where TChange : DatabaseC
         try
         {
             var mre = new AsyncManualResetEvent(false);
-            using var changes = await Ravendb.Store.Instance.Changes(Ravendb.Store.Configuration.Name).EnsureConnectedNow().ConfigureAwait(false);
+            var changes = Ravendb.Store.Instance.Changes(Ravendb.Store.Configuration.Name);
+            await changes.EnsureConnectedNow().ConfigureAwait(false);
+
             var observable = Subscribe(changes);
             using var sub = observable.Subscribe(x => mre.Set()); // TODO on error need to reconnect
-
             await observable.EnsureSubscribedNow().ConfigureAwait(false);
 
             while (true)

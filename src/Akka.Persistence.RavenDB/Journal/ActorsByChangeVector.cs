@@ -5,7 +5,7 @@ using Raven.Client.Documents.Indexes;
 
 namespace Akka.Persistence.RavenDb.Journal;
 
-public class ActorsByChangeVector : AbstractIndexCreationTask<ActorId>
+public class ActorsByChangeVector : AbstractIndexCreationTask<UniqueActor>
 {
     public ActorsByChangeVector()
     {

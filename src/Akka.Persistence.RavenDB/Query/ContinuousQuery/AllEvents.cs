@@ -32,7 +32,7 @@ public class AllEvents : ContinuousQuery<TimeoutChange>
             var persistent = Journal.Types.Event.Deserialize(Ravendb.Storage.Serialization, @event, ActorRefs.NoSender);
             _offset = new ChangeVectorOffset(results.Current.ChangeVector);
             var e = new EventEnvelope(_offset, @event.PersistenceId, @event.SequenceNr, persistent.Payload,
-                @event.Timestamp, @event.Tags);
+                @event.Timestamp.Ticks, @event.Tags);
             await Channel.Writer.WriteAsync(e, cts.Token).ConfigureAwait(false);
         }
     }
