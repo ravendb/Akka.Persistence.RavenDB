@@ -3,18 +3,14 @@ using Akka.Configuration;
 using Akka.Persistence.RavenDb.Journal;
 using Akka.Persistence.RavenDb.Journal.Types;
 using Raven.Client.Documents;
-using Raven.Client.Documents.Conventions;
-using Raven.Client.Documents.Operations;
 using Raven.Client.Documents.Operations.Indexes;
 using Raven.Client.Exceptions;
 using Raven.Client.Exceptions.Database;
 using Raven.Client.Http;
-using Raven.Client.ServerWide;
 using Raven.Client.ServerWide.Commands;
 using Raven.Client.ServerWide.Operations;
 using Sparrow.Json;
 using System.Security.Cryptography.X509Certificates;
-using Raven.Client.Documents.Session;
 
 namespace Akka.Persistence.RavenDb
 {
@@ -28,14 +24,6 @@ namespace Akka.Persistence.RavenDb
         {
             Configuration = configuration;
             _instance = new Lazy<DocumentStore>(GetStore);
-        }
-
-        public async Task<Topology> GetTopologyAsync()
-        {
-            var re = Instance.GetRequestExecutor();
-            // we do that only to ensure we have a topology set
-            await re.GetPreferredNode().ConfigureAwait(false);
-            return re.Topology;
         }
 
         private DocumentStore GetStore()
@@ -56,14 +44,6 @@ namespace Akka.Persistence.RavenDb
             store.Initialize();
 
             return store;
-        }
-
-        public class GetDatabaseTopologyOperation : IOperation<Topology>
-        {
-            public RavenCommand<Topology> GetCommand(IDocumentStore store, DocumentConventions conventions, JsonOperationContext context, HttpCache cache)
-            {
-                return new GetDatabaseTopologyCommand();
-            }
         }
 
         private readonly CancellationTokenSource _stopTokenSource = new CancellationTokenSource();
@@ -105,8 +85,8 @@ namespace Akka.Persistence.RavenDb
                     if (record != null)
                         return new Status.Success(NotUsed.Instance);
 
-                    var databaseRecord = new DatabaseRecord(Configuration.Name);
-                    var res = await Instance.Maintenance.Server.SendAsync(new CreateDatabaseOperation(databaseRecord, replicationFactor: 3), token: cts.Token).ConfigureAwait(false);
+                    var res = await Instance.Maintenance.Server.SendAsync(new CreateDatabaseOperation(builder =>
+                        builder.Regular(Configuration.Name).WithReplicationFactor(1)), cts.Token).ConfigureAwait(false);
 
                     using (var context = JsonOperationContext.ShortTermSingleUse())
                     {

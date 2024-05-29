@@ -25,8 +25,6 @@ namespace Akka.Persistence.RavenDb.Hosting
         public Version? HttpVersion { get; set; }
         public bool? DisableTcpCompression { get; set; }
         public TimeSpan? SaveChangesTimeout { get; set; }
-        public SaveChangesMode SaveChangesMode { get; set; }
-
         public override string Identifier { get; set; }
         protected override Config InternalDefaultConfig { get; } = Default;
 
@@ -49,8 +47,6 @@ namespace Akka.Persistence.RavenDb.Hosting
 
             if (SaveChangesTimeout is not null)
                 sb.AppendLine($"save-changes-timeout = {SaveChangesTimeout.ToHocon(allowInfinite: true, zeroIsInfinite: true)}");
-
-            sb.AppendLine($"save-changes-mode = {SaveChangesMode.ToString().ToHocon()}");
 
             return base.Build(sb);
         }

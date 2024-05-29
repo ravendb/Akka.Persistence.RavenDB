@@ -3,13 +3,6 @@ using Raven.Client.Documents.Conventions;
 
 namespace Akka.Persistence.RavenDb
 {
-    public enum SaveChangesMode
-    {
-        Single,
-        Majority, 
-        ClusterWide
-    }
-
     public abstract class RavenDbConfiguration
     {
         public readonly string Name;
@@ -20,7 +13,6 @@ namespace Akka.Persistence.RavenDb
         public readonly bool? DisableTcpCompression;
         public readonly TimeSpan SaveChangesTimeout;
         public readonly TimeSpan ReadTimeout;
-        public readonly SaveChangesMode SaveChangesMode;
         /// <summary>
         /// Flag determining whether the database should be automatically initialized.
         /// </summary>
@@ -50,7 +42,6 @@ namespace Akka.Persistence.RavenDb
             DisableTcpCompression = config.GetBoolean("disable-tcp-compression");
             SaveChangesTimeout = config.GetTimeSpan("save-changes-timeout", TimeSpan.FromSeconds(30));
             ReadTimeout = config.GetTimeSpan("read-timeout", TimeSpan.FromSeconds(60));
-            SaveChangesMode = (SaveChangesMode)Enum.Parse(typeof(SaveChangesMode), config.GetString("save-changes-mode"), ignoreCase: true);
         }
 
         public DocumentConventions ToDocumentConventions()
