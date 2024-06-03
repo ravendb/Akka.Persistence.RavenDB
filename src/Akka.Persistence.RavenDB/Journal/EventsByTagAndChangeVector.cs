@@ -17,7 +17,7 @@ public class EventsByTagAndChangeVector : AbstractIndexCreationTask<Types.Event>
                 e.PersistenceId,
                 e.Tags,
                 e.Timestamp,
-                _ = ChangeVectorAnalyzer.ToList(changeVector).Select(x => CreateField(x.DatabaseId, x.Etag))
+                _ = ChangeVectorAnalyzer.ToDictionary(changeVector).Select(x => CreateField(x.Key, x.Value))
             };
 
         AdditionalSources = new Dictionary<string, string>()

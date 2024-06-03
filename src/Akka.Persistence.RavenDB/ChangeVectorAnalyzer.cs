@@ -6,26 +6,17 @@ namespace Akka.Persistence.RavenDb;
 public static class ChangeVectorAnalyzer
 {
     public static Regex Pattern = new Regex(@"\w{1,4}:(\d+)-(.{22})", RegexOptions.Compiled);
-    public static List<ChangeVectorElement> ToList(string changeVector)
+    public static Dictionary<string, long> ToDictionary(string changeVector)
     {
-        var list = new List<ChangeVectorElement>();
+        var dic = new Dictionary<string, long>();
         var matches = Pattern.Matches(changeVector);
         foreach (Match match in matches)
         {
-            var element = new ChangeVectorElement
-            {
-                DatabaseId = match.Groups[2].Value,
-                Etag = long.Parse(match.Groups[1].Value)
-            };
-            list.Add(element);
+            var databaseId = match.Groups[2].Value;
+            var etag = long.Parse(match.Groups[1].Value);
+            dic.Add(databaseId, etag);
         }
 
-        return list;
-    }
-
-    public struct ChangeVectorElement
-    {
-        public string DatabaseId;
-        public long Etag;
+        return dic;
     }
 }

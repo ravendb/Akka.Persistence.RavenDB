@@ -15,7 +15,7 @@ public class ActorsByChangeVector : AbstractIndexCreationTask<UniqueActor>
             select new
             {
                 PersistenceId = actor.PersistenceId,
-                _ = ChangeVectorAnalyzer.ToList(changeVector).Select(x => CreateField(x.DatabaseId, x.Etag)),
+                _ = ChangeVectorAnalyzer.ToDictionary(changeVector).Select(x => CreateField(x.Key, x.Value)),
             };
 
         AdditionalSources = new Dictionary<string, string>()

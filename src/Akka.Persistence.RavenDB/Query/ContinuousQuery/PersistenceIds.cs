@@ -32,7 +32,7 @@ public class PersistenceIds : ContinuousQuery<IndexChange, string>
         {
             var id = results.Current.Document.PersistenceId;
             await Channel.Writer.WriteAsync(id, cts.Token).ConfigureAwait(false);
-            _offset = new ChangeVectorOffset(results.Current.ChangeVector);
+            _offset.Merge(results.Current.ChangeVector);
         }
     }
 }

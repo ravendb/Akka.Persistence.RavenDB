@@ -38,8 +38,8 @@ public class EventsByTag : ContinuousQuery<TimeoutChange>
         {
             var @event = results.Current.Document;
             var persistent = Journal.Types.Event.Deserialize(Ravendb.Storage.Serialization, @event, ActorRefs.NoSender);
-            _offset = new ChangeVectorOffset(results.Current.ChangeVector);
-            var e = new EventEnvelope(_offset, @event.PersistenceId, @event.SequenceNr, persistent.Payload,
+            var offset = _offset.Merge(results.Current.ChangeVector);
+            var e = new EventEnvelope(offset, @event.PersistenceId, @event.SequenceNr, persistent.Payload,
                 @event.Timestamp.Ticks, @event.Tags);
             await Channel.Writer.WriteAsync(e, cts.Token).ConfigureAwait(false);
 

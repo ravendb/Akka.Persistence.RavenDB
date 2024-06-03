@@ -1,14 +1,9 @@
+using System.Text;
 using Akka.Persistence.Query;
 using Raven.Client.Documents.Session;
 
 namespace Akka.Persistence.RavenDb.Query;
 
-/// <summary>
-/// RavenDB is a distributed database and as such we need to be able to page in a distributed manner. <br/>
-/// The Change Vector is a concept in RavenDB that provides a way to track document version and have global partial order. <para/>
-///
-/// Each document has a change vector, in a cluster of 3 nodes it might look something like this: [A:100, B:200, C:150] 
-/// </summary>
 public class ChangeVectorOffset : Offset
 {
     public static string Code;
@@ -21,24 +16,51 @@ public class ChangeVectorOffset : Offset
         }
     }
 
-    public string ChangeVector;
-    public List<ChangeVectorAnalyzer.ChangeVectorElement> Elements;
+    public Dictionary<string, long> Elements;
+
     public ChangeVectorOffset(string changeVector)
     {
-        ChangeVector = changeVector;
-        Elements = ChangeVectorAnalyzer.ToList(changeVector);
+        Elements = ChangeVectorAnalyzer.ToDictionary(changeVector);
     }
+
+    private ChangeVectorOffset(ChangeVectorOffset copy)
+    {
+        Elements = new Dictionary<string, long>(copy.Elements);
+    }
+
     public override int CompareTo(Offset other)
     {
         throw new NotSupportedException("you can't directly compare 2 change vectors");
     }
 
-    public ChangeVectorOffset Clone()
+    public ChangeVectorOffset Merge(string changeVector)
     {
-        return new ChangeVectorOffset(ChangeVector);
+        var elements = ChangeVectorAnalyzer.ToDictionary(changeVector);
+
+        foreach (var element in elements)
+        {
+            var value = element.Value;
+            if (Elements.TryGetValue(element.Key, out var etag))
+            {
+                value = Math.Max(value, etag);
+            }
+
+            Elements[element.Key] = value;
+        }
+
+        return new ChangeVectorOffset(this);
     }
 
-    public override string ToString() => ChangeVector;
+    public override string ToString()
+    {
+        var sb = new StringBuilder();
+        foreach (var element in Elements)
+        {
+            sb.AppendLine($"{element.Key}:{element.Value}");
+        }
+
+        return sb.ToString();
+    }
 
     public static ChangeVectorOffset Convert(Offset offset) =>
         offset switch
@@ -52,24 +74,25 @@ public class ChangeVectorOffset : Offset
 
     public IAsyncDocumentQuery<T> ApplyOffset<T>(IAsyncDocumentQuery<T> q)
     {
-        for (var index = 0; index < Elements.Count; index++)
+        var first = true;
+        foreach (var element in Elements)
         {
-            if (index == 0)
+            if (first)
             {
                 q = q.AndAlso().OpenSubclause();
+                first = false;
             }
             else
             {
                 q = q.OrElse();
             }
 
-            var element = Elements[index];
-            q.WhereGreaterThan(element.DatabaseId, element.Etag);
+            q.WhereGreaterThan(element.Key, element.Value);
+        }
 
-            if (index == Elements.Count - 1)
-            {
-                q = q.CloseSubclause();
-            }
+        if (Elements.Count > 0)
+        {
+            q = q.CloseSubclause();
         }
 
         /*

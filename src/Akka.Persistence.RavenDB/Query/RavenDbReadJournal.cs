@@ -150,8 +150,9 @@ namespace Akka.Persistence.RavenDb.Query
                     using var session = _store.Instance.OpenAsyncSession();
                     session.Advanced.SessionInfo.SetContext(tag);
 
+                    var cvOffset = ChangeVectorOffset.Convert(offset);
                     var q = session.Advanced.AsyncDocumentQuery<Journal.Types.Event>(nameof(EventsByTagAndChangeVector)).ContainsAny(e => e.Tags, new[] { tag });
-                    q = ChangeVectorOffset.Convert(offset).ApplyOffset(q);
+                    q = cvOffset.ApplyOffset(q);
 
                     using var cts = _store.GetReadCancellationTokenSource();
                     await using var results = await session.Advanced.StreamAsync(q, cts.Token).ConfigureAwait(false);
@@ -159,7 +160,7 @@ namespace Akka.Persistence.RavenDb.Query
                     {
                         var @event = results.Current.Document;
                         var persistent = Journal.Types.Event.Deserialize(_serialization, @event, ActorRefs.NoSender);
-                        var e = new EventEnvelope(new ChangeVectorOffset(results.Current.ChangeVector), @event.PersistenceId, @event.SequenceNr, persistent.Payload, @event.Timestamp.Ticks, @event.Tags);
+                        var e = new EventEnvelope(cvOffset.Merge(results.Current.ChangeVector), @event.PersistenceId, @event.SequenceNr, persistent.Payload, @event.Timestamp.Ticks, @event.Tags);
                         await currentEventsByTag.Writer.WriteAsync(e, cts.Token).ConfigureAwait(false);
                     }
 
@@ -191,8 +192,9 @@ namespace Akka.Persistence.RavenDb.Query
                 try
                 {
                     using var session = _store.Instance.OpenAsyncSession();
+                    var cvOffset = ChangeVectorOffset.Convert(offset);
                     var q = session.Advanced.AsyncDocumentQuery<Journal.Types.Event>(indexName: nameof(EventsByTagAndChangeVector));
-                    q = ChangeVectorOffset.Convert(offset).ApplyOffset(q);
+                    q = cvOffset.ApplyOffset(q);
 
                     using var cts = _store.GetReadCancellationTokenSource();
                     await using var results = await session.Advanced.StreamAsync(q, cts.Token).ConfigureAwait(false);
@@ -200,7 +202,7 @@ namespace Akka.Persistence.RavenDb.Query
                     {
                         var @event = results.Current.Document;
                         var persistent = Journal.Types.Event.Deserialize(_serialization, @event, ActorRefs.NoSender);
-                        var e = new EventEnvelope(new ChangeVectorOffset(results.Current.ChangeVector), @event.PersistenceId, @event.SequenceNr, persistent.Payload, @event.Timestamp.Ticks, @event.Tags);
+                        var e = new EventEnvelope(cvOffset.Merge(results.Current.ChangeVector), @event.PersistenceId, @event.SequenceNr, persistent.Payload, @event.Timestamp.Ticks, @event.Tags);
                         await currentAllEvents.Writer.WriteAsync(e, cts.Token).ConfigureAwait(false);
                     }
 
