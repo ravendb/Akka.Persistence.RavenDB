@@ -3,7 +3,7 @@
     <PackageId>Akka.Persistence.Hosting.RavenDB</PackageId>
     <Product>Akka Persistence Hosting for RavenDB</Product>
     <Title>Akka Persistence Hosting for RavenDB</Title>
-    <Description>RavenDB Client is the client library for accessing RavenDB</Description>
+    <Description>RavenDB plugin for Akka.NET Hosting</Description>
 
     <OutputType>Library</OutputType>
     <TargetFramework>netstandard2.0</TargetFramework>

@@ -1,0 +1,241 @@
+$RELEASE_INFO_FILE = 'artifacts/release-info.json'
+function SetVersionInfo($projectDir) {
+    $builtAt = [DateTime]::UtcNow
+    $builtAtString = $builtAt.ToString("yyyyMMdd-HHmm")
+
+    $version = GetCurrentVersionPrefix $projectDir
+
+    $versionInfo = @{ 
+        Version       = $version;
+        BuiltAt       = $builtAt;
+        BuiltAtString = $builtAtString;
+    }
+
+    New-Item -Path $RELEASE_INFO_FILE -Force -Type File
+    $versionInfoJson = ConvertTo-Json -InputObject $versionInfo
+    Set-Content -Path $RELEASE_INFO_FILE -Value $versionInfoJson
+
+    return $versionInfo
+}
+
+function GetVersionInfo() {
+    return Get-Content -Path $RELEASE_INFO_FILE | ConvertFrom-Json
+}
+
+function BumpVersion ($projectDir, $versionPrefix, $buildType) {
+    if ($buildType.ToLower() -ne "stable") {
+        return
+    }
+
+    write-host "Calculate new version"
+    $newVersion = SemverMinor $versionPrefix
+    write-host "New version is: $newVersion"
+
+    $repo = @{
+        "Owner"  = "ravendb"
+        "Name"   = "ravendb.akka.net"
+        "Branch" = "release/v1.0"
+    }
+
+    $remoteFilePath = 'src/CommonAssemblyInfo.cs'
+    $fileUri = GetGitHubFileUri $repo $remoteFilePath
+    $githubFileData = GetFileDataFromGitHub $fileUri $repo.Branch
+    $contents = GetAssemblyInfoWithBumpedVersion $projectDir $newVersion $githubFileData.content
+    BumpVersionInRemoteRepo $fileUri $contents $repo $githubFileData $newVersion
+
+    $remoteFilePath = 'src/Raven.Client/Properties/VersionInfo.cs'
+    $fileUri = GetGitHubFileUri $repo $remoteFilePath
+    $githubFileData = GetFileDataFromGitHub $fileUri $repo.Branch
+    $contents = GetVersionInfoWithBumpedVersion $projectDir $newVersion $githubFileData.content
+    BumpVersionInRemoteRepo $fileUri $contents $repo $githubFileData $newVersion
+}
+
+function BumpVersionInRemoteRepo($fileUri, $contents, $repo, $githubFileData, $newVersion) {
+    $commitMessage = "Bump version in $remoteFilePath to $newVersion"
+    UpdateFileInGitHub $fileUri $contents $commitMessage $repo.Branch $githubFileData
+    write-host "Bumped version in the repository $($repo.Owner)/$($repo.Name) $($repo.Branch) to $newVersion."
+}
+
+function GetGithubFileUri($repoInfo, $filePath) {
+
+    $repoOwner = $repoInfo.Owner
+    $repoName = $repoInfo.Name
+
+    write-host "Build file URI for: $repoOwner/$($repoName):$($filePath)"
+
+    if (!$repoOwner) {
+        throw "Repository owner is required."
+    }
+
+    if (!$repoName) {
+        throw "Repository name is required."
+    }
+
+    if (!$filePath) {
+        throw "File path to update is required."
+    }
+
+    return "https://api.github.com/repos/$repoOwner/$repoName/contents/$filepath"
+}
+
+function UpdateFileInGitHub($fileUri, $newFileContent, $commitMessage, $branch, $githubFileInfo) {
+
+    if (!$githubFileInfo) {
+        throw "Github file info is required."
+    }
+
+    if (!$commitMessage) {
+        throw "Commit message is required."
+    }
+
+    if (!$env:GITHUB_USER -or !$env:GITHUB_ACCESS_TOKEN) {
+        throw "Environment variables holding GitHub credentials GITHUB_USER or GITHUB_ACCESS_TOKEN are not set."
+    }
+
+    if (!$branch) {
+        $branch = exec { & "git" rev-parse --abbrev-ref HEAD }
+    }
+    
+    $bodyJson = ConvertTo-Json @{
+        path    = $githubFileInfo.path
+        sha     = $githubFileInfo.sha
+        branch  = $branch
+        message = $commitMessage
+        content = [System.Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($newFileContent))
+    }
+
+    $creds = "{0}:{1}" -f $env:GITHUB_USER, $env:GITHUB_ACCESS_TOKEN
+    $encodedCreds = [System.Convert]::ToBase64String([System.Text.Encoding]::ASCII.GetBytes($creds))
+    $headers = @{
+        Authorization = "Basic $encodedCreds"
+    }
+    
+    write-host "Update $fileUri file in GIT repo." 
+
+    (Invoke-WebRequest -UseBasicParsing -TimeoutSec 120 -Uri $fileUri -Method PUT -Headers $headers -ContentType "application/json" -Body $bodyJson).content | ConvertFrom-Json
+    
+    write-host "Updated content under $fileUri"
+}
+
+function GetAssemblyInfoContent($fileUri, $branch) {
+    write-host "Getting $fileUri`?ref=$branch";
+    $fileContent = (Invoke-RestMethod -TimeoutSec 120 "$fileUri`?ref=$branch").content
+    [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($fileContent))
+}
+
+function GetFileDataFromGitHub($fileUri, $branch) {
+    if (!$branch) {
+        throw "Branch is mandatory."
+    }
+
+    $data = Invoke-RestMethod -TimeoutSec 120 "$fileUri`?ref=$branch"
+    $data
+}
+
+function GetAssemblyInfoWithBumpedVersion ($projectDir, $newVersion, $srcFileContent) {
+    Write-Host "Set version in CommonAssemblyInfo.cs ..."
+
+    $result = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($srcFileContent))
+
+    $assemblyVersionPattern = [regex]'\[assembly: AssemblyVersion\(".*"\)\]'
+    $result = $assemblyVersionPattern.Replace($result, "[assembly: AssemblyVersion(""$newVersion"")]")
+
+    $assemblyFileVersionPattern = [regex]'\[assembly: AssemblyFileVersion\(".*"\)\]'
+    $result = $assemblyFileVersionPattern.Replace($result, "[assembly: AssemblyFileVersion(""$newVersion.54"")]")
+
+    $assemblyInfoVersionPattern = [regex]'\[assembly: AssemblyInformationalVersion\(".*"\)\]';
+    $result = $assemblyInfoVersionPattern.Replace($result, "[assembly: AssemblyInformationalVersion(""$newVersion"")]")
+
+    if (!$result) {
+        throw "Could not get assembly info file contents with bumped version."
+    }
+
+    return $result
+}
+
+function GetVersionInfoWithBumpedVersion ($projectDir, $newVersion, $srcFileContent) {
+    Write-Host "Set version in VersionInfo.cs ..."
+
+    $result = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($srcFileContent))
+
+    $pattern = [regex]'\[assembly: RavenVersion\(Build = "54", CommitHash = "([^"]*)", Version = "5.4", FullVersion = "[^"]*", ReleaseDateString = "[^"]*"\)\]'
+    $m = $pattern.Match($result)
+    $commit = $m.Groups[1]
+    $releaseDate = $(Get-Date).ToUniversalTime().ToString("yyyy-MM-dd")
+    $result = $pattern.Replace(
+        $result,
+        "[assembly: RavenVersion(Build = ""54"", CommitHash = ""$commit"", Version = ""5.4"", FullVersion = ""$newVersion-custom-54"", ReleaseDateString = ""$releaseDate"")]")
+
+    if (!$result) {
+        throw "Could not get VersionInfo.cs file contents with bumped version."
+    }
+
+    return $result
+}
+
+function SemverMinor ($versionPrefix) {
+    $versionStrings = $versionPrefix.split('.')
+    $versionNumbers = foreach ($number in $versionStrings) {
+        [int]::parse($number)
+    }
+
+    $versionNumbers[2] += 1
+    $newVersion = $versionNumbers -join '.'
+    
+    $newVersion
+}
+
+function GetCurrentVersionPrefix($projectDir) {
+    $commonAssemblyInfoFile = [io.path]::combine($projectDir, 'src', 'CommonAssemblyInfo.cs')
+    $match = select-string -Path $commonAssemblyInfoFile -Pattern 'AssemblyVersion\("(.*)"\)'
+    $match.Matches.Groups[1].Value
+}
+
+function Validate-ExecutableVersion($assemblyPath, $versionInfo) {
+    # $versionInfo = @{ 
+    #     Version = $version;
+    #     VersionPrefix = $versionPrefix;
+    #     VersionSuffix = $versionSuffix;
+    #     BuildNumber = $buildNumber;
+    #     BuiltAt = $builtAt;
+    #     BuiltAtString = $builtAtString;
+    #     BuildType = $buildType;
+    # }
+    
+    Assert-AssemblyFileVersion `
+        -ExpectedFileVersion "$($versionInfo.VersionPrefix).$($versionInfo.BuildNumber)" `
+        -AssemblyPath $assemblyPath
+
+    Assert-AssemblyProductVersion `
+        -ExpectedProductVersion $versionInfo.Version `
+        -AssemblyPath $assemblyPath
+
+    write-host "Version valid for $assemblyPath"
+
+}
+
+function Validate-AssemblyVersion($assemblyPath, $versionInfo) {
+    # $versionInfo = @{ 
+    #     Version = $version;
+    #     VersionPrefix = $versionPrefix;
+    #     VersionSuffix = $versionSuffix;
+    #     BuildNumber = $buildNumber;
+    #     BuiltAt = $builtAt;
+    #     BuiltAtString = $builtAtString;
+    #     BuildType = $buildType;
+    # }
+    Assert-AssemblyVersion `
+        -ExpectedVersion $versionInfo.VersionPrefix `
+        -AssemblyPath $assemblyPath
+    
+    Assert-AssemblyFileVersion `
+        -ExpectedFileVersion "$($versionInfo.VersionPrefix).$($versionInfo.BuildNumber)" `
+        -AssemblyPath $assemblyPath
+
+    Assert-AssemblyProductVersion `
+        -ExpectedProductVersion $versionInfo.Version `
+        -AssemblyPath $assemblyPath
+
+    write-host "Version valid for $assemblyPath"
+
+}
