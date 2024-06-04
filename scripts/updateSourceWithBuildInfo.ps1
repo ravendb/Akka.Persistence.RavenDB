@@ -1,5 +1,5 @@
-function BuildClient ( $srcDir ) {
-    write-host "Building Client"
+function BuildProject ( $srcDir ) {
+    write-host "Building Project"
     & dotnet build /p:SourceLinkCreate=true /p:GenerateDocumentationFile=true --no-incremental `
         --configuration "Release" $srcDir;
     CheckLastExitCode
@@ -18,12 +18,12 @@ function UpdateCsprojAndNuspecWithVersionInfo ( $projectDir, $version ) {
     Write-Host "Set version in Directory.build.props..."
 
     $src = $(Join-Path $projectDir -ChildPath "src");
-    $clientCsproj = [io.path]::Combine($src, "Akka.Persistence.RavenDB", "Akka.Persistence.RavenDb.csproj")
-
+    $akkaCsproj = [io.path]::Combine($src, "Akka.Persistence.RavenDB", "Akka.Persistence.RavenDb.csproj")
+    $akkaHostingCsproj = [io.path]::Combine($src, "Akka.Persistence.RavenDB.Hosting", "Akka.Persistence.RavenDb.Hosting.csproj")
 
     # https://github.com/Microsoft/msbuild/issues/1721
-    UpdateVersionInFile $clientCsproj $version
-
+    UpdateVersionInFile $akkaCsproj $version
+    UpdateVersionInFile $akkaHostingCsproj $version
 
     UpdateDirectoryBuildProps $projectDir "src" $version
 }
