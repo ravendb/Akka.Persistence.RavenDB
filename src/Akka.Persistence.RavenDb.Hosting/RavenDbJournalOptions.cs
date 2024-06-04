@@ -30,10 +30,10 @@ namespace Akka.Persistence.RavenDb.Hosting
 
         protected override StringBuilder Build(StringBuilder sb)
         {
-            if(Name is not null)
+            if (Name is not null)
                 sb.AppendLine($"name = {Name.ToHocon()}");
 
-            if(Urls is not null && Urls.Length > 0)
+            if (Urls is not null && Urls.Length > 0)
                 sb.AppendLine($"urls = [{string.Join(",", Urls.Select(x => x.ToHocon()))}]");
 
             if (CertificatePath is not null)

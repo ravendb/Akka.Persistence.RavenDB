@@ -32,12 +32,9 @@ namespace Akka.Persistence.RavenDb
                 CertPassword = Environment.GetEnvironmentVariable("RAVEN_CERTIFICATE_PASSWORD");
             }
 
-            var httpVersion = config.GetString("http-version");
-            if (string.IsNullOrEmpty(httpVersion) == false)
-            {
-                //TODO stav: error gets swallowed in akka and doesn't bubble up
-                HttpVersion = Version.Parse(httpVersion);
-            }
+            var httpVersion = config.GetString("http-version", "2.0");
+            //TODO stav: error gets swallowed in akka and doesn't bubble up
+            HttpVersion = Version.Parse(httpVersion);
             
             DisableTcpCompression = config.GetBoolean("disable-tcp-compression");
             SaveChangesTimeout = config.GetTimeSpan("save-changes-timeout", TimeSpan.FromSeconds(30));
