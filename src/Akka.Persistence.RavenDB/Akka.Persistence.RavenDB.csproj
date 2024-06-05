@@ -15,7 +15,6 @@
 
   <ItemGroup>
     <EmbeddedResource Include="reference.conf">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </EmbeddedResource>
 
     <EmbeddedResource Include="ChangeVectorAnalyzer.cs">

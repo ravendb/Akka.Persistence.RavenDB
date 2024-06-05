@@ -9,6 +9,9 @@ public static class ChangeVectorAnalyzer
     public static Dictionary<string, long> ToDictionary(string changeVector)
     {
         var dic = new Dictionary<string, long>();
+        if (string.IsNullOrEmpty(changeVector))
+            return dic;
+
         var matches = Pattern.Matches(changeVector);
         foreach (Match match in matches)
         {
