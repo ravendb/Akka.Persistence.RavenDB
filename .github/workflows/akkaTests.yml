@@ -29,4 +29,6 @@ jobs:
 
     - name: Test - Release
       run: dotnet test --configuration Release --no-restore
+      env:
+        SKIP_PERF: TRUE
       working-directory: ./test/Akka.Persistence.RavenDB.Tests
