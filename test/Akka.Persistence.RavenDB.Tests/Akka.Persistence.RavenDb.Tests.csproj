@@ -27,7 +27,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Akka.Persistence.RavenDb.Hosting\Akka.Persistence.RavenDb.Hosting.csproj" />
+    <ProjectReference Include="..\..\src\Akka.Persistence.RavenDB.Hosting\Akka.Persistence.RavenDb.Hosting.csproj" />
     <ProjectReference Include="..\..\src\Akka.Persistence.RavenDB\Akka.Persistence.RavenDb.csproj" />
   </ItemGroup>
 

@@ -9,7 +9,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "test", "test", "{F08F38D2-B
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Akka.Persistence.RavenDb", "src\Akka.Persistence.RavenDB\Akka.Persistence.RavenDb.csproj", "{3F5D8942-DEDA-47E3-8751-E93BC2A74747}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Akka.Persistence.RavenDb.Hosting", "src\Akka.Persistence.RavenDb.Hosting\Akka.Persistence.RavenDb.Hosting.csproj", "{AA8C9721-1317-4F2F-9464-9623FCDE111D}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Akka.Persistence.RavenDb.Hosting", "src\Akka.Persistence.RavenDB.Hosting\Akka.Persistence.RavenDb.Hosting.csproj", "{AA8C9721-1317-4F2F-9464-9623FCDE111D}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Akka.Persistence.RavenDb.Tests", "test\Akka.Persistence.RavenDB.Tests\Akka.Persistence.RavenDb.Tests.csproj", "{F0CFB0A8-47B5-459D-861F-747104EF3CEA}"
 EndProject
