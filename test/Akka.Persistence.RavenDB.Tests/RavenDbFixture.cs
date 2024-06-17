@@ -19,12 +19,13 @@ namespace Akka.Persistence.RavenDb.Tests
 
             var options = new TestServerOptions
             {
-                ServerUrl = Urls[0],
-                DataDirectory = @"C:\Work\akka\RavenDBTestDir\",
+                /*ServerUrl = Urls[0],
+                DataDirectory = @"C:\Work\akka\RavenDBTestDir\",*/
             };
 
             var server = EmbeddedServer.Instance;
             server.StartServer(options);
+            Urls = new[] { server.GetServerUriAsync().Result.ToString() };
         }
 
         // For every test (actor system) this is called

@@ -14,7 +14,7 @@
     <PackageReference Include="Akka.Persistence.TCK" Version="1.5.14" />
     <PackageReference Include="Akka.Persistence.TestKit.Xunit2" Version="1.5.14" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.8.0" />
-    <PackageReference Include="RavenDB.TestDriver" Version="6.0.2" />
+    <PackageReference Include="RavenDB.TestDriver" Version="6.0.103" />
     <PackageReference Include="xunit" Version="2.6.4" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.5.6">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
