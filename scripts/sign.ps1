@@ -67,11 +67,12 @@ function SignFile( $projectDir, $filePath, $dryRun) {
     foreach ($time in $timeservers) {
         try {
             Write-Host "Command: $signTool sign /f `"$installerCert`" /p `"PASSWORD`" /d `"RavenDB`" /du `"https://ravendb.net`" /t `"$time`" /v /debug `"$filePath`""
-            exec { & $signTool sign /f "$installerCert" /p "$certPassword" /fd SHA256 /d "RavenDB" /du "https://ravendb.net" /tr "$time" /td SHA256 /v /debug "$filePath" }
+            & $signTool sign /f "$installerCert" /p "$certPassword" /fd SHA256 /d "RavenDB" /du "https://ravendb.net" /tr "$time" /td SHA256 /v /debug "$filePath"
             CheckLastExitCode
             return
         }
         catch {
+            Write-Error $_
             continue
         }
     }
