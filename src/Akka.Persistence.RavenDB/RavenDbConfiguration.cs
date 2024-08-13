@@ -12,7 +12,6 @@ namespace Akka.Persistence.RavenDb
         public readonly Version? HttpVersion;
         public readonly bool? DisableTcpCompression;
         public readonly TimeSpan SaveChangesTimeout;
-        public readonly TimeSpan ReadTimeout;
         /// <summary>
         /// Flag determining whether the database should be automatically initialized.
         /// </summary>
@@ -38,7 +37,6 @@ namespace Akka.Persistence.RavenDb
             
             DisableTcpCompression = config.GetBoolean("disable-tcp-compression");
             SaveChangesTimeout = config.GetTimeSpan("save-changes-timeout", TimeSpan.FromSeconds(30));
-            ReadTimeout = config.GetTimeSpan("read-timeout", TimeSpan.FromSeconds(60));
         }
 
         public DocumentConventions ToDocumentConventions()
