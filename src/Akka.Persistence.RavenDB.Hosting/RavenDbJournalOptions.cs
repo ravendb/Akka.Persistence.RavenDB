@@ -1,11 +1,12 @@
-﻿using Akka.Configuration;
-using Akka.Hosting;
+﻿using System.Linq.Expressions;
+using Akka.Configuration;
 using Akka.Persistence.Hosting;
 using System.Text;
+using Raven.Client.Documents.Conventions;
 
 namespace Akka.Persistence.RavenDb.Hosting
 {
-    public sealed class RavenDbJournalOptions : JournalOptions
+    public sealed class RavenDbJournalOptions : JournalOptions, IRavenDbOptions
     {
         private static readonly Config Default = RavenDbPersistence.DefaultConfiguration()
             .GetConfig(RavenDbJournalConfiguration.Identifier);
@@ -27,27 +28,12 @@ namespace Akka.Persistence.RavenDb.Hosting
         public TimeSpan? SaveChangesTimeout { get; set; }
         public override string Identifier { get; set; }
         protected override Config InternalDefaultConfig { get; } = Default;
+        RavenDbConventions IRavenDbOptions.Conventions { get; set; }
+        public void AddConvention<T>(Expression<Func<DocumentConventions, T>> path, T value) => RavenDbOptions.AddConvention(this, path, value);
 
         protected override StringBuilder Build(StringBuilder sb)
         {
-            if (Name is not null)
-                sb.AppendLine($"name = {Name.ToHocon()}");
-
-            if (Urls is not null && Urls.Length > 0)
-                sb.AppendLine($"urls = [{string.Join(",", Urls.Select(x => x.ToHocon()))}]");
-
-            if (CertificatePath is not null)
-                sb.AppendLine($"certificate-path = {CertificatePath.ToHocon()}");
-
-            if (HttpVersion is not null)
-                sb.AppendLine($"http-version = {HttpVersion.ToString().ToHocon()}");
-
-            if (DisableTcpCompression is not null)
-                sb.AppendLine($"disable-tcp-compression = {DisableTcpCompression.ToHocon()}");
-
-            if (SaveChangesTimeout is not null)
-                sb.AppendLine($"save-changes-timeout = {SaveChangesTimeout.ToHocon(allowInfinite: true, zeroIsInfinite: true)}");
-
+            RavenDbOptions.Build(sb, this);
             return base.Build(sb);
         }
     }

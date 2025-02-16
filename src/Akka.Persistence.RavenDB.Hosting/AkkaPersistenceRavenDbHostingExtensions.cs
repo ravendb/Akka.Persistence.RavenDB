@@ -1,4 +1,5 @@
-﻿using Akka.Actor;
+﻿using System.Security.Cryptography.X509Certificates;
+using Akka.Actor;
 using Akka.Hosting;
 using Akka.Persistence.Hosting;
 
@@ -95,6 +96,53 @@ namespace Akka.Persistence.RavenDb.Hosting
                 AutoInitialize = autoInitialize,
             };
             
+            AddCertificate(certificatePath);
+
+            return mode switch
+            {
+                PersistenceMode.Journal => builder.WithRavenDbPersistence(journalOpt, null),
+                PersistenceMode.SnapshotStore => builder.WithRavenDbPersistence(null, snapshotOpt),
+                PersistenceMode.Both => builder.WithRavenDbPersistence(journalOpt, snapshotOpt),
+                _ => throw new ArgumentOutOfRangeException(nameof(mode), mode, "Invalid PersistenceMode defined.")
+            };
+        }
+
+        ///<inheritdoc cref="WithRavenDbPersistence(AkkaConfigurationBuilder, string[], string, string, PersistenceMode,Action{AkkaPersistenceJournalBuilder},bool,string,bool)"/>
+        public static AkkaConfigurationBuilder WithRavenDbPersistence(
+            this AkkaConfigurationBuilder builder,
+            string[] urls,
+            string databaseName,
+            X509Certificate2 certificate = null,
+            string certificatePassword = null,
+            PersistenceMode mode = PersistenceMode.Both,
+            Action<AkkaPersistenceJournalBuilder>? journalBuilder = null,
+            bool autoInitialize = true,
+            string pluginIdentifier = "ravendb",
+            bool isDefaultPlugin = true)
+        {
+            if (mode == PersistenceMode.SnapshotStore && journalBuilder is { })
+                throw new Exception($"{nameof(journalBuilder)} can only be set when {nameof(mode)} is set to either {PersistenceMode.Both} or {PersistenceMode.Journal}");
+
+            var journalOpt = new RavenDbJournalOptions(isDefaultPlugin, pluginIdentifier)
+            {
+                Urls = urls,
+                Name = databaseName,
+                AutoInitialize = autoInitialize,
+            };
+
+            var adapters = new AkkaPersistenceJournalBuilder(journalOpt.Identifier, builder);
+            journalBuilder?.Invoke(adapters);
+            journalOpt.Adapters = adapters;
+
+            var snapshotOpt = new RavenDbSnapshotOptions(isDefaultPlugin, pluginIdentifier)
+            {
+                Urls = urls,
+                Name = databaseName,
+                AutoInitialize = autoInitialize,
+            };
+
+            AddCertificate(certificate, certificatePassword);
+
             return mode switch
             {
                 PersistenceMode.Journal => builder.WithRavenDbPersistence(journalOpt, null),
@@ -195,7 +243,7 @@ namespace Akka.Persistence.RavenDb.Hosting
         {
             if (journalOptions is null && snapshotOptions is null)
                 throw new ArgumentException($"{nameof(journalOptions)} and {nameof(snapshotOptions)} could not both be null");
-            
+
             return (journalOptions, snapshotOptions) switch
             {
                 (null, null) =>
@@ -220,6 +268,32 @@ namespace Akka.Persistence.RavenDb.Hosting
                         .AddHocon(snapshotOptions.DefaultConfig, HoconAddMode.Append)
                         .AddHocon(RavenDbPersistence.DefaultConfiguration(), HoconAddMode.Append),
             };
+        }
+
+        /// <summary>
+        /// Set a path and password to a client certificate, will be stored as env variables.
+        /// </summary>
+        public static void AddCertificate(string path, string password = null)
+        {
+            if (string.IsNullOrEmpty(path))
+                return;
+
+            Environment.SetEnvironmentVariable(RavenDbConfiguration.CertificatePathVariable, path);
+            if (string.IsNullOrEmpty(password) == false)
+                Environment.SetEnvironmentVariable(RavenDbConfiguration.CertificatePasswordVariable, password);
+        }
+
+        /// <summary>
+        /// Pass a client certificate directly, it will be encoded to base64 and stored as an env variable.
+        /// </summary>
+        public static void AddCertificate(X509Certificate2 certificate, string password = null)
+        {
+            if (certificate == null)
+                return;
+
+            Environment.SetEnvironmentVariable(RavenDbConfiguration.CertificateBase64Variable, Convert.ToBase64String(certificate.Export(X509ContentType.Pfx)));
+            if (string.IsNullOrEmpty(password) == false)
+                Environment.SetEnvironmentVariable(RavenDbConfiguration.CertificatePasswordVariable, password);
         }
     }
 }

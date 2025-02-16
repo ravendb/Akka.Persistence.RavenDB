@@ -1,17 +1,24 @@
-﻿using Akka.Configuration;
+﻿using System.ComponentModel;
+using System.Security.Cryptography.X509Certificates;
+using Akka.Configuration;
 using Raven.Client.Documents.Conventions;
 
 namespace Akka.Persistence.RavenDb
 {
     public abstract class RavenDbConfiguration
     {
+        public const string CertificatePathVariable = "RAVEN_Security_Certificate_Path";
+        public const string CertificateBase64Variable = "RAVEN_Security_Certificate";
+        public const string CertificatePasswordVariable = "RAVEN_Security_Certificate_Password";
+
         public readonly string Name;
         public readonly string[] Urls;
         public readonly string CertificatePath;
-        public readonly string CertPassword;
         public readonly Version? HttpVersion;
-        public readonly bool? DisableTcpCompression;
+        public readonly bool DisableTcpCompression;
         public readonly TimeSpan SaveChangesTimeout;
+        private readonly Config _conventions;
+
         /// <summary>
         /// Flag determining whether the database should be automatically initialized.
         /// </summary>
@@ -23,13 +30,7 @@ namespace Akka.Persistence.RavenDb
             Urls = config.GetStringList("urls")?.ToArray() ?? throw new ArgumentException("urls must be provided");
             CertificatePath = config.GetString("certificate-path");
             AutoInitialize = config.GetBoolean("auto-initialize", true);
-
-            //TODO stav: DisposeCertificate in DocumentConventions?
-            
-            if (string.IsNullOrEmpty(CertificatePath) == false)
-            {
-                CertPassword = Environment.GetEnvironmentVariable("RAVEN_CERTIFICATE_PASSWORD");
-            }
+            _conventions = config.GetConfig("conventions");
 
             var httpVersion = config.GetString("http-version", "2.0");
             //TODO stav: error gets swallowed in akka and doesn't bubble up
@@ -39,14 +40,62 @@ namespace Akka.Persistence.RavenDb
             SaveChangesTimeout = config.GetTimeSpan("save-changes-timeout", TimeSpan.FromSeconds(30));
         }
 
+        public X509Certificate2 GetCertificate()
+        {
+            var password = Environment.GetEnvironmentVariable(CertificatePasswordVariable) ?? Environment.GetEnvironmentVariable("RAVEN_CERTIFICATE_PASSWORD");
+            var certificate = Environment.GetEnvironmentVariable(CertificateBase64Variable);
+            var path = Environment.GetEnvironmentVariable(CertificatePathVariable) ?? CertificatePath;
+
+            if (string.IsNullOrEmpty(path) == false)
+                return new X509Certificate2(path, password);
+
+            if (string.IsNullOrEmpty(certificate) == false)
+                return new X509Certificate2(Convert.FromBase64String(certificate), password);
+
+            return null;
+        }
+
         public DocumentConventions ToDocumentConventions()
         {
-            var conventions = new DocumentConventions();
+            var conventions = new DocumentConventions
+            {
+                HttpVersion = HttpVersion, 
+                DisableTcpCompression = DisableTcpCompression
+            };
 
-            conventions.HttpVersion = HttpVersion ?? conventions.HttpVersion;
-            conventions.DisableTcpCompression = DisableTcpCompression ?? conventions.DisableTcpCompression;
+            if (_conventions is { IsEmpty: false })
+            {
+                foreach (var option in _conventions.AsEnumerable())
+                {
+                    var key = option.Key;
+                    var value = option.Value.GetString();
+                    var property = typeof(DocumentConventions).GetProperty(key);
+                    if (property == null)
+                        throw new NotSupportedException($"The property {key} is not supported in 'DocumentConventions', please check casing.");
+
+                    if (value == "null")
+                        value = null;
+
+                    var c = ConvertDocumentConvention(value, property.PropertyType);
+                    property.SetValue(conventions, c);
+                }
+            }
+            
             
             return conventions;
+        }
+
+        public static object ConvertDocumentConvention(string input, Type type)
+        {
+            try
+            {
+                var converter = TypeDescriptor.GetConverter(type);
+                return converter.ConvertFromString(input);
+            }
+            catch (NotSupportedException)
+            {
+                return null;
+            }
         }
     }
 

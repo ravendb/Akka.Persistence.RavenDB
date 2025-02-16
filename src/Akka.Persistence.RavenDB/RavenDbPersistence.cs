@@ -31,14 +31,10 @@ namespace Akka.Persistence.RavenDb
             var store = new DocumentStore
             {
                 Urls = Configuration.Urls,
+                Certificate = Configuration.GetCertificate(),
                 Conventions = Configuration.ToDocumentConventions(),
                 Database = Configuration.Name,
             };
-
-            if (string.IsNullOrEmpty(Configuration.CertificatePath) == false)
-                store.Certificate = string.IsNullOrEmpty(Configuration.CertPassword) == false
-                    ? new X509Certificate2(Configuration.CertificatePath, Configuration.CertPassword)
-                    : new X509Certificate2(Configuration.CertificatePath);
 
             store.Conventions.LoadBalanceBehavior = LoadBalanceBehavior.UseSessionContext;
             store.Initialize();
