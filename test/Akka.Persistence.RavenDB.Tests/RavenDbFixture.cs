@@ -19,6 +19,10 @@ namespace Akka.Persistence.RavenDb.Tests
 
             var options = new TestServerOptions
             {
+                Licensing = new ServerOptions.LicensingOptions
+                {
+                    ThrowOnInvalidOrMissingLicense = false
+                }
                 /*ServerUrl = Urls[0],
                 DataDirectory = @"C:\Work\akka\RavenDBTestDir\",*/
             };
