@@ -2,6 +2,7 @@
 using System.Security.Cryptography.X509Certificates;
 using Akka.Configuration;
 using Raven.Client.Documents.Conventions;
+using Raven.Client.Http;
 
 namespace Akka.Persistence.RavenDb
 {
@@ -60,7 +61,8 @@ namespace Akka.Persistence.RavenDb
             var conventions = new DocumentConventions
             {
                 HttpVersion = HttpVersion, 
-                DisableTcpCompression = DisableTcpCompression
+                DisableTcpCompression = DisableTcpCompression,
+                LoadBalanceBehavior = LoadBalanceBehavior.UseSessionContext
             };
 
             if (_conventions is { IsEmpty: false })

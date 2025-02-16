@@ -36,7 +36,6 @@ namespace Akka.Persistence.RavenDb
                 Database = Configuration.Name,
             };
 
-            store.Conventions.LoadBalanceBehavior = LoadBalanceBehavior.UseSessionContext;
             store.Initialize();
 
             return store;

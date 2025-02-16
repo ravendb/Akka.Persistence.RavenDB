@@ -75,13 +75,15 @@ akka.persistence {
             # default: 30s
             #save-changes-timeout = 30s
 
-            # Http version for the RavenDB client to use in communication with the server
-            # default: 2.0
-            #http-version = "2.0"
-
-            # Determines whether to compress the data sent in the client-server TCP communication
-            # default: false
-            #disable-tcp-compression = false
+            # pass conventions to DocumentStore
+			# This is _case-sensetive_ and the value must be a quoted
+			conventions {
+				# Http version for the RavenDB client to use in communication with the server
+				HttpVersion = "2.0"
+				
+				# Determines whether to compress the data sent in the client-server TCP communication
+				DisableTcpCompression = "False"
+			}
         }
     }
     
@@ -114,13 +116,15 @@ akka.persistence {
             # default: 30s
             #save-changes-timeout = 30s
 
-            # Http version for the RavenDB client to use in communication with the server
-            # default: 2.0
-            #http-version = "2.0"
-
-            # Determines whether to compress the data sent in the client-server TCP communication
-            # default: false
-            #disable-tcp-compression = false
+            # pass conventions to DocumentStore
+			# This is _case-sensetive_ and the value must be a quoted
+			conventions {
+				# Http version for the RavenDB client to use in communication with the server
+				HttpVersion = "2.0"
+				
+				# Determines whether to compress the data sent in the client-server TCP communication
+				DisableTcpCompression = "False"
+			}
         }
     }
     

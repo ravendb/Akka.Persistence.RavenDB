@@ -50,7 +50,10 @@ namespace Akka.Persistence.RavenDb.Tests
                                              urls = ["{{{{{(Secure ? SecureUrls[0] : Urls[0])}}}}}"]
                                              save-changes-timeout = 30s
                                              certificate-path = "{{{{{(Secure ? CertificatePath : "" )}}}}}"
-                                             http-version = "2.0"
+                                             conventions {
+                                                HttpVersion = "2.0"
+                                             }
+                                             
                                              event-adapters {
                                                   color-tagger  = "Akka.Persistence.TCK.Query.ColorFruitTagger, Akka.Persistence.TCK"
                                               }
@@ -68,7 +71,9 @@ namespace Akka.Persistence.RavenDb.Tests
                                               urls = ["{{{{{(Secure ? SecureUrls[0] : Urls[0])}}}}}"]
                                               save-changes-timeout = 30s
                                               certificate-path = "{{{{{(Secure ? CertificatePath : "" )}}}}}"
-                                              http-version = "2.0"
+                                              conventions {
+                                                 HttpVersion = "2.0"
+                                              }
                                               save-changes-mode = "clusterwide"
                                           }
                                       }
