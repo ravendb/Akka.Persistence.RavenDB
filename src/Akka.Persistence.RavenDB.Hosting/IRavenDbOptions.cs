@@ -1,4 +1,5 @@
 ﻿using System.Linq.Expressions;
+using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using Akka.Hosting;
 using Raven.Client.Documents.Conventions;
@@ -20,6 +21,10 @@ public interface IRavenDbOptions
     /// </summary>
     public string? CertificatePath { get; set; }
     /// <summary>
+    /// Instance of the certificate
+    /// </summary>
+    public X509Certificate2? Certificate { get; set; }
+    /// <summary>
     /// Http version to use for communication between the RavenDB client and server
     /// </summary>
     public Version? HttpVersion { get; set; }
@@ -36,21 +41,17 @@ public interface IRavenDbOptions
 
     /// <summary>
     /// Allow to configure Conventions for the RavenDB client.
-    /// Currently only non-nested properties are supported.
-    ///
     /// Conventions set here take precedence over other options in this class.
     /// </summary>
-    public void AddConvention<T>(Expression<Func<DocumentConventions, T>> path, T value);
+    internal Action<DocumentConventions>? ModifyDocumentConventions { get; set; }
 
-    internal RavenDbConventions Conventions { get; set; }
+    internal void Apply(AkkaConfigurationBuilder builder);
 }
 
 internal static class RavenDbOptions
 {
     public static void Build(StringBuilder sb, IRavenDbOptions options)
     {
-        options.Conventions?.BuildConvention(sb);
-
         if (options.Name is not null)
             sb.AppendLine($"name = {options.Name.ToHocon()}");
 
@@ -68,11 +69,5 @@ internal static class RavenDbOptions
 
         if (options.SaveChangesTimeout is not null)
             sb.AppendLine($"save-changes-timeout = {options.SaveChangesTimeout.ToHocon(allowInfinite: true, zeroIsInfinite: true)}");
-    }
-
-    public static void AddConvention<T>(IRavenDbOptions options, Expression<Func<DocumentConventions, T>> path, T value)
-    {
-        options.Conventions ??= new RavenDbConventions();
-        options.Conventions.AddConvention(path, value);
     }
 }

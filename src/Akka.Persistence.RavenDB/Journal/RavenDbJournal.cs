@@ -3,12 +3,11 @@ using Akka.Configuration;
 using Akka.Persistence.Journal;
 using Akka.Persistence.RavenDb.Journal.Types;
 using Akka.Persistence.RavenDb.Query;
+using Akka.Persistence.RavenDb.Query.ContinuousQuery;
 using Nito.AsyncEx;
+using Raven.Client.Documents.Session;
 using System.Collections.Concurrent;
 using System.Collections.Immutable;
-using Raven.Client.Exceptions;
-using Akka.Persistence.RavenDb.Query.ContinuousQuery;
-using Raven.Client.Documents.Session;
 
 namespace Akka.Persistence.RavenDb.Journal
 {
@@ -26,7 +25,7 @@ namespace Akka.Persistence.RavenDb.Journal
         }
 
         // This constructor is needed because config can come from both Akka.Persistence and Akka.Cluster.Sharding
-        public RavenDbJournal(Config config) : this(new RavenDbJournalConfiguration(config))
+        public RavenDbJournal(Config config) : this(new RavenDbJournalConfiguration(config, Context.System))
         {
         }
 

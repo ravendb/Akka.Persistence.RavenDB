@@ -6,11 +6,9 @@ using Raven.Client.Documents;
 using Raven.Client.Documents.Operations.Indexes;
 using Raven.Client.Exceptions;
 using Raven.Client.Exceptions.Database;
-using Raven.Client.Http;
 using Raven.Client.ServerWide.Commands;
 using Raven.Client.ServerWide.Operations;
 using Sparrow.Json;
-using System.Security.Cryptography.X509Certificates;
 
 namespace Akka.Persistence.RavenDb
 {
@@ -31,11 +29,11 @@ namespace Akka.Persistence.RavenDb
             var store = new DocumentStore
             {
                 Urls = Configuration.Urls,
-                Certificate = Configuration.GetCertificate(),
+                Certificate = Configuration.Certificate,
                 Conventions = Configuration.ToDocumentConventions(),
                 Database = Configuration.Name,
             };
-
+            
             store.Initialize();
 
             return store;
@@ -213,8 +211,8 @@ namespace Akka.Persistence.RavenDb
             var queryConfig = system.Settings.Config.GetConfig(RavenDbQueryConfiguration.Identifier);
             var snapshotConfig = system.Settings.Config.GetConfig(RavenDbSnapshotConfiguration.Identifier);
 
-            JournalConfiguration = new RavenDbJournalConfiguration(journalConfig);
-            SnapshotConfiguration = new RavenDbSnapshotConfiguration(snapshotConfig);
+            JournalConfiguration = new RavenDbJournalConfiguration(journalConfig, system);
+            SnapshotConfiguration = new RavenDbSnapshotConfiguration(snapshotConfig, system);
             QueryConfiguration = new RavenDbQueryConfiguration(queryConfig);
 
             Serialization = system.Serialization;

@@ -16,7 +16,7 @@ namespace Akka.Persistence.RavenDb.Snapshot
         {
         }
 
-        public RavenDbSnapshotStore(Config config) : this(new RavenDbSnapshotConfiguration(config))
+        public RavenDbSnapshotStore(Config config) : this(new RavenDbSnapshotConfiguration(config, Context.System))
         {
         }
 

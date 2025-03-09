@@ -14,6 +14,10 @@ Note:
 When configuring the plugin using both Akka.Hosting and HOCON, in cases where parameters overlap,  
 the configuration provided via Akka.Hosting take precedence and will override the corresponding HOCON settings.
 
+Also please note that the following options are only supported in Hosting:
+ * Passing a certificate instance (instead of path.)
+ * Configuring conventions of the RavenDB client for both snapshot and journal stores.
+
 ### Configure with `Akka.Hosting`
 
 Using _Akka.Hosting_, you can easily set up the plugin within your application's startup configuration.  
@@ -30,11 +34,16 @@ var host = new HostBuilder().ConfigureServices((context, services) => {
     {
         builder.WithRavenDbPersistence(
             urls: new[] { "http://localhost:8080" },
-            databaseName: "AkkaStorage");
+            databaseName: "AkkaStorage",
+            modifyDocumentConventions: conventions => // OPTIONAL
+            {
+                conventions.DisableTopologyCache = true;
+                conventions.HttpVersion = new Version(2, 0);
+            });
     });
 })
     
-var app = builder.Build();
+var app = host.Build();
 app.Run();
 ```
 
@@ -66,7 +75,7 @@ akka.persistence {
             auto-initialize = false
 
             # Location of a client certificate to access a secure RavenDB database.
-            # If a password is required, it should be stored in the `RAVEN_CERTIFICATE_PASSWORD` env variable.
+            # If a password is required, it should be stored in the `RAVEN_Security_Certificate_Password` env variable. (Using hosting will store it automatically.)
             #certificate-path = "\\path\\to\\cert.pfx"
 
             # Timeout for 'save' requests sent to RavenDB, such as writing or deleting
@@ -75,15 +84,13 @@ akka.persistence {
             # default: 30s
             #save-changes-timeout = 30s
 
-            # pass conventions to DocumentStore
-			# This is _case-sensetive_ and the value must be a quoted
-			conventions {
-				# Http version for the RavenDB client to use in communication with the server
-				HttpVersion = "2.0"
-				
-				# Determines whether to compress the data sent in the client-server TCP communication
-				DisableTcpCompression = "False"
-			}
+            # Http version for the RavenDB client to use in communication with the server
+            # default: 2.0
+            #http-version = "2.0"
+
+            # Determines whether to compress the data sent in the client-server TCP communication
+            # default: false
+            #disable-tcp-compression = false
         }
     }
     
@@ -107,7 +114,7 @@ akka.persistence {
             auto-initialize = false
 
             # Location of a client certificate to access a secure RavenDB database.
-            # If a password is required, it should be stored in the `RAVEN_CERTIFICATE_PASSWORD` env variable.
+            # If a password is required, it should be stored in the `RAVEN_Security_Certificate_Password` env variable. (Using hosting will store it automatically.)
             #certificate-path = "\\path\\to\\cert.pfx"
 
             # Timeout for 'save' requests sent to RavenDB, such as writing or deleting
@@ -116,15 +123,13 @@ akka.persistence {
             # default: 30s
             #save-changes-timeout = 30s
 
-            # pass conventions to DocumentStore
-			# This is _case-sensetive_ and the value must be a quoted
-			conventions {
-				# Http version for the RavenDB client to use in communication with the server
-				HttpVersion = "2.0"
-				
-				# Determines whether to compress the data sent in the client-server TCP communication
-				DisableTcpCompression = "False"
-			}
+            # Http version for the RavenDB client to use in communication with the server
+            # default: 2.0
+            #http-version = "2.0"
+
+            # Determines whether to compress the data sent in the client-server TCP communication
+            # default: false
+            #disable-tcp-compression = false
         }
     }
     

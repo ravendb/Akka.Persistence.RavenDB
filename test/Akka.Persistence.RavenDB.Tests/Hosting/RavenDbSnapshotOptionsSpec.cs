@@ -85,15 +85,11 @@ namespace Akka.Persistence.RavenDb.Tests.Hosting
                 DisableTcpCompression = true,
                 HttpVersion = new Version(2, 0),
                 Name = "SnapshotTestDb",
-                SaveChangesTimeout = TimeSpan.FromSeconds(10),
+                SaveChangesTimeout = TimeSpan.FromSeconds(10)
             };
 
-            options.AddConvention(d => d.SaveEnumsAsIntegers, false);
-            options.AddConvention(d => d.LoadBalanceBehavior, LoadBalanceBehavior.UseSessionContext);
-            options.AddConvention(d => d.HttpVersion, new Version(2,0));
-
             var baseConfig = options.ToConfig();
-
+            
             baseConfig.GetString("akka.persistence.snapshot-store.plugin").Should().Be("akka.persistence.snapshot-store.custom");
 
             var config = baseConfig.GetConfig("akka.persistence.snapshot-store.custom");
@@ -105,12 +101,6 @@ namespace Akka.Persistence.RavenDb.Tests.Hosting
             config.GetString("http-version").Should().Be(options.HttpVersion.ToString());
             config.GetBoolean("disable-tcp-compression").Should().Be(options.DisableTcpCompression.Value);
             config.GetTimeSpan("save-changes-timeout").Should().Be(options.SaveChangesTimeout.Value);
-
-            var conventions = config.GetConfig("conventions");
-            conventions.Should().NotBeNull();
-            conventions.GetString("SaveEnumsAsIntegers").Should().Be("False");
-            conventions.GetString("LoadBalanceBehavior").Should().Be("UseSessionContext");
-            conventions.GetString("HttpVersion").Should().Be("2.0");
         }
 
         const string Json = @"
