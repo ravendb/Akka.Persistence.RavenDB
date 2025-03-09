@@ -116,6 +116,7 @@ namespace Akka.Persistence.RavenDb.Tests.Hosting
                             urls: new[] { "https://localhost:8080" },
                             databaseName: _databaseName,
                             certificatePath: TestDriverExtension.CertificatePath,
+                            certificatePassword: TestDriverExtension.CertificatePassword,
                             modifyDocumentConventions: conventions =>
                             {
                                 conventions.SaveEnumsAsIntegers = false;
