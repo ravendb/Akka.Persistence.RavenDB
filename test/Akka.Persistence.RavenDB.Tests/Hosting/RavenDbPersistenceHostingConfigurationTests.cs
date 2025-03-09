@@ -54,8 +54,8 @@ namespace Akka.Persistence.RavenDb.Tests.Hosting
         [Fact]
         public async Task RavenDbPersistenceWithCertificateInstance()
         {
-            var journalCert = new X509Certificate2(TestDriverExtension.CertificatePath);
-            var snapshotCert = new X509Certificate2(TestDriverExtension.CertificatePath);
+            var journalCert = new X509Certificate2(TestDriverExtension.CertificatePath, TestDriverExtension.CertificatePassword);
+            var snapshotCert = new X509Certificate2(TestDriverExtension.CertificatePath, TestDriverExtension.CertificatePassword);
             using var host = new HostBuilder()
                 .ConfigureServices((context, services) =>
                 {
@@ -105,7 +105,7 @@ namespace Akka.Persistence.RavenDb.Tests.Hosting
         [Fact]
         public async Task RavenDbPersistenceWithCertificatePath()
         {
-            var cert = new X509Certificate2(TestDriverExtension.CertificatePath);
+            var cert = new X509Certificate2(TestDriverExtension.CertificatePath, TestDriverExtension.CertificatePassword);
             
             using var host = new HostBuilder()
                 .ConfigureServices((context, services) =>
@@ -147,7 +147,7 @@ namespace Akka.Persistence.RavenDb.Tests.Hosting
         [Fact]
         public async Task RavenDbPersistenceWithBothCertificatePathAndInstanceShouldThrow()
         {
-            var cert = new X509Certificate2(TestDriverExtension.CertificatePath);
+            var cert = new X509Certificate2(TestDriverExtension.CertificatePath, TestDriverExtension.CertificatePassword);
 
             using var host = new HostBuilder()
                 .ConfigureServices((context, services) =>

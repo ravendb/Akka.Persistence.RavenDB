@@ -31,5 +31,9 @@
     <ProjectReference Include="..\..\src\Akka.Persistence.RavenDB.Hosting\Akka.Persistence.RavenDb.Hosting.csproj" />
     <ProjectReference Include="..\..\src\Akka.Persistence.RavenDB\Akka.Persistence.RavenDb.csproj" />
   </ItemGroup>
-
+	<ItemGroup>
+		<None Update="dummyClientCert.pfx">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</None>
+	</ItemGroup>
 </Project>
