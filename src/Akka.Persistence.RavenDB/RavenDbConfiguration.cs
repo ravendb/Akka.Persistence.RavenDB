@@ -8,7 +8,7 @@ namespace Akka.Persistence.RavenDb
 {
     public abstract class RavenDbConfiguration
     {
-        public const string CertificatePasswordVariable = "RAVEN_Security_Certificate_Password";
+        public const string CertificatePasswordVariable = "RAVEN_CERTIFICATE_PASSWORD";
 
         public readonly string Name;
         public readonly string[] Urls;
@@ -49,7 +49,7 @@ namespace Akka.Persistence.RavenDb
             if (setup.Certificate != null)
                 return setup.Certificate;
 
-            var password = Environment.GetEnvironmentVariable(CertificatePasswordVariable) ?? Environment.GetEnvironmentVariable("RAVEN_CERTIFICATE_PASSWORD");
+            var password = Environment.GetEnvironmentVariable(CertificatePasswordVariable);
             
             if (string.IsNullOrEmpty(CertificatePath) == false)
                 return new X509Certificate2(CertificatePath, password);

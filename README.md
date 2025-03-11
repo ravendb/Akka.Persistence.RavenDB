@@ -75,7 +75,7 @@ akka.persistence {
             auto-initialize = false
 
             # Location of a client certificate to access a secure RavenDB database.
-            # If a password is required, it should be stored in the `RAVEN_Security_Certificate_Password` env variable. (Using hosting will store it automatically.)
+            # If a password is required, it should be stored in the `RAVEN_CERTIFICATE_PASSWORD` env variable. (Using hosting will store it automatically.)
             #certificate-path = "\\path\\to\\cert.pfx"
 
             # Timeout for 'save' requests sent to RavenDB, such as writing or deleting
@@ -114,7 +114,7 @@ akka.persistence {
             auto-initialize = false
 
             # Location of a client certificate to access a secure RavenDB database.
-            # If a password is required, it should be stored in the `RAVEN_Security_Certificate_Password` env variable. (Using hosting will store it automatically.)
+            # If a password is required, it should be stored in the `RAVEN_CERTIFICATE_PASSWORD` env variable. (Using hosting will store it automatically.)
             #certificate-path = "\\path\\to\\cert.pfx"
 
             # Timeout for 'save' requests sent to RavenDB, such as writing or deleting
