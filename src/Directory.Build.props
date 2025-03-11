@@ -1,6 +1,6 @@
 ﻿<Project>
   <PropertyGroup>
-    <Version>1.5.22</Version>
+    <Version>1.5.37</Version>
     <PackageIconUrl>http://static.ravendb.net/logo-for-nuget.png</PackageIconUrl>
     <PackageIcon>icon.png</PackageIcon>
     <PackageProjectUrl>https://github.com/ravendb/Akka.Persistence.RavenDB</PackageProjectUrl>
@@ -9,7 +9,8 @@
     <Authors>Hibernating Rhinos</Authors>
     <PackageTags>akka;ravendb</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
-
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    
     <GenerateAssemblyCopyrightAttribute>false</GenerateAssemblyCopyrightAttribute>
     <GenerateAssemblyVersionAttribute>false</GenerateAssemblyVersionAttribute>
     <GenerateAssemblyFileVersionAttribute>false</GenerateAssemblyFileVersionAttribute>
@@ -28,6 +29,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="\"/>
     <None Include="..\..\scripts\assets\icon.png" Pack="true" Visible="false" PackagePath="" />
   </ItemGroup>
 </Project>
