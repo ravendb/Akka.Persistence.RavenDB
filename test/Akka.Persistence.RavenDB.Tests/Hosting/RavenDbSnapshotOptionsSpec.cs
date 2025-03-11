@@ -5,6 +5,7 @@ using FluentAssertions.Extensions;
 using Microsoft.Extensions.Configuration;
 using System.Net;
 using System.Text;
+using Raven.Client.Http;
 
 namespace Akka.Persistence.RavenDb.Tests.Hosting
 {
@@ -84,11 +85,11 @@ namespace Akka.Persistence.RavenDb.Tests.Hosting
                 DisableTcpCompression = true,
                 HttpVersion = new Version(2, 0),
                 Name = "SnapshotTestDb",
-                SaveChangesTimeout = TimeSpan.FromSeconds(10),
+                SaveChangesTimeout = TimeSpan.FromSeconds(10)
             };
 
             var baseConfig = options.ToConfig();
-
+            
             baseConfig.GetString("akka.persistence.snapshot-store.plugin").Should().Be("akka.persistence.snapshot-store.custom");
 
             var config = baseConfig.GetConfig("akka.persistence.snapshot-store.custom");

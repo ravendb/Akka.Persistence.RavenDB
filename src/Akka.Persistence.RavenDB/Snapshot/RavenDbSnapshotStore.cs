@@ -16,7 +16,7 @@ namespace Akka.Persistence.RavenDb.Snapshot
         {
         }
 
-        public RavenDbSnapshotStore(Config config) : this(new RavenDbSnapshotConfiguration(config))
+        public RavenDbSnapshotStore(Config config) : this(new RavenDbSnapshotConfiguration(config, Context.System))
         {
         }
 
@@ -148,6 +148,10 @@ namespace Akka.Persistence.RavenDb.Snapshot
             session.Advanced.SetTransactionMode(TransactionMode.ClusterWide);
 
             using var cts = _store.GetWriteCancellationTokenSource();
+            var snapshot = await session.LoadAsync<Types.Snapshot>(id, cts.Token).ConfigureAwait(false);
+            if (snapshot.Timestamp > metadata.Timestamp && metadata.Timestamp > DateTime.MinValue) // due to fixes done here: https://github.com/akkadotnet/akka.net/pull/7313
+                return;
+
             session.Delete(id);
             await session.SaveChangesAsync(cts.Token).ConfigureAwait(false);
         }

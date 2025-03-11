@@ -1,6 +1,9 @@
-﻿using Akka.Actor;
+﻿using System.IO;
+using System.Security.Cryptography.X509Certificates;
+using Akka.Actor;
 using Akka.Hosting;
 using Akka.Persistence.Hosting;
+using Raven.Client.Documents.Conventions;
 
 namespace Akka.Persistence.RavenDb.Hosting
 {
@@ -27,6 +30,15 @@ namespace Akka.Persistence.RavenDb.Hosting
         /// </param>
         /// <param name="certificatePath">
         ///     Path to the client certificate of the secure RavenDB database.
+        ///     <i>Default</i>: <c>null</c>
+        /// </param>
+        /// <param name="certificatePassword">
+        ///     Password of the certificate.
+        ///     <i>Default</i>: <c>null</c>
+        /// </param>
+        /// <param name="modifyDocumentConventions">
+        ///     Allow to configure Conventions for the RavenDB client.
+        ///     Conventions set here take precedence over other options in this class.
         ///     <i>Default</i>: <c>null</c>
         /// </param>
         /// <param name="mode">
@@ -64,7 +76,9 @@ namespace Akka.Persistence.RavenDb.Hosting
             this AkkaConfigurationBuilder builder,
             string[] urls,
             string databaseName,
-            string? certificatePath = null,
+            string certificatePath,
+            string certificatePassword = null,
+            Action<DocumentConventions>? modifyDocumentConventions = null,
             PersistenceMode mode = PersistenceMode.Both,
             Action<AkkaPersistenceJournalBuilder>? journalBuilder = null,
             bool autoInitialize = true,
@@ -79,6 +93,7 @@ namespace Akka.Persistence.RavenDb.Hosting
                 Urls = urls,
                 Name = databaseName,
                 CertificatePath = certificatePath,
+                ModifyDocumentConventions = modifyDocumentConventions,
                 AutoInitialize = autoInitialize,
             };
 
@@ -86,15 +101,18 @@ namespace Akka.Persistence.RavenDb.Hosting
             journalBuilder?.Invoke(adapters);
             journalOpt.Adapters = adapters;
 
-            //TODO stav: where are the rest of the options set? where can we change query options?
             var snapshotOpt = new RavenDbSnapshotOptions(isDefaultPlugin, pluginIdentifier)
             {
                 Urls = urls,
                 Name = databaseName,
                 CertificatePath = certificatePath,
+                ModifyDocumentConventions = modifyDocumentConventions,
                 AutoInitialize = autoInitialize,
             };
             
+            if (string.IsNullOrEmpty(certificatePassword) == false)
+                Environment.SetEnvironmentVariable(RavenDbConfiguration.CertificatePasswordVariable, certificatePassword);
+
             return mode switch
             {
                 PersistenceMode.Journal => builder.WithRavenDbPersistence(journalOpt, null),
@@ -102,6 +120,69 @@ namespace Akka.Persistence.RavenDb.Hosting
                 PersistenceMode.Both => builder.WithRavenDbPersistence(journalOpt, snapshotOpt),
                 _ => throw new ArgumentOutOfRangeException(nameof(mode), mode, "Invalid PersistenceMode defined.")
             };
+        }
+
+        ///<inheritdoc cref="WithRavenDbPersistence(AkkaConfigurationBuilder, string[], string, string, string,Action{DocumentConventions}, PersistenceMode,Action{AkkaPersistenceJournalBuilder},bool,string,bool)"/>
+        public static AkkaConfigurationBuilder WithRavenDbPersistence(
+            this AkkaConfigurationBuilder builder,
+            string[] urls,
+            string databaseName,
+            X509Certificate2 certificate,
+            Action<DocumentConventions>? modifyDocumentConventions = null,
+            PersistenceMode mode = PersistenceMode.Both,
+            Action<AkkaPersistenceJournalBuilder>? journalBuilder = null,
+            bool autoInitialize = true,
+            string pluginIdentifier = "ravendb",
+            bool isDefaultPlugin = true)
+        {
+            if (mode == PersistenceMode.SnapshotStore && journalBuilder is { })
+                throw new Exception($"{nameof(journalBuilder)} can only be set when {nameof(mode)} is set to either {PersistenceMode.Both} or {PersistenceMode.Journal}");
+            
+            var journalOpt = new RavenDbJournalOptions(isDefaultPlugin, pluginIdentifier)
+            {
+                Urls = urls,
+                Name = databaseName,
+                Certificate = certificate,
+                ModifyDocumentConventions = modifyDocumentConventions,
+                AutoInitialize = autoInitialize,
+            };
+
+            var adapters = new AkkaPersistenceJournalBuilder(journalOpt.Identifier, builder);
+            journalBuilder?.Invoke(adapters);
+            journalOpt.Adapters = adapters;
+
+            var snapshotOpt = new RavenDbSnapshotOptions(isDefaultPlugin, pluginIdentifier)
+            {
+                Urls = urls,
+                Name = databaseName,
+                Certificate = certificate,
+                ModifyDocumentConventions = modifyDocumentConventions,
+                AutoInitialize = autoInitialize,
+            };
+
+            return mode switch
+            {
+                PersistenceMode.Journal => builder.WithRavenDbPersistence(journalOpt, null),
+                PersistenceMode.SnapshotStore => builder.WithRavenDbPersistence(null, snapshotOpt),
+                PersistenceMode.Both => builder.WithRavenDbPersistence(journalOpt, snapshotOpt),
+                _ => throw new ArgumentOutOfRangeException(nameof(mode), mode, "Invalid PersistenceMode defined.")
+            };
+        }
+
+        ///<inheritdoc cref="WithRavenDbPersistence(AkkaConfigurationBuilder, string[], string, string, string,Action{DocumentConventions}, PersistenceMode,Action{AkkaPersistenceJournalBuilder},bool,string,bool)"/>
+        public static AkkaConfigurationBuilder WithRavenDbPersistence(
+            this AkkaConfigurationBuilder builder,
+            string[] urls,
+            string databaseName,
+            Action<DocumentConventions>? modifyDocumentConventions = null,
+            PersistenceMode mode = PersistenceMode.Both,
+            Action<AkkaPersistenceJournalBuilder>? journalBuilder = null,
+            bool autoInitialize = true,
+            string pluginIdentifier = "ravendb",
+            bool isDefaultPlugin = true)
+        {
+            return WithRavenDbPersistence(builder, urls, databaseName, certificate: null, modifyDocumentConventions, mode, journalBuilder,
+                autoInitialize, pluginIdentifier, isDefaultPlugin);
         }
 
         /// <summary>
@@ -195,31 +276,83 @@ namespace Akka.Persistence.RavenDb.Hosting
         {
             if (journalOptions is null && snapshotOptions is null)
                 throw new ArgumentException($"{nameof(journalOptions)} and {nameof(snapshotOptions)} could not both be null");
-            
+
             return (journalOptions, snapshotOptions) switch
             {
                 (null, null) =>
                     throw new ArgumentException($"{nameof(journalOptions)} and {nameof(snapshotOptions)} could not both be null"),
 
                 (_, null) =>
-                    builder
-                        .AddHocon(journalOptions.ToConfig(), HoconAddMode.Prepend)
-                        .AddHocon(journalOptions.DefaultConfig, HoconAddMode.Append)
-                        .AddHocon(RavenDbPersistence.DefaultConfiguration(), HoconAddMode.Append),
+                    builder.WithRavenDbPersistence(journalOptions),
 
                 (null, _) =>
-                    builder
-                        .AddHocon(snapshotOptions.ToConfig(), HoconAddMode.Prepend)
-                        .AddHocon(snapshotOptions.DefaultConfig, HoconAddMode.Append),
+                    builder.WithRavenDbPersistence(snapshotOptions),
 
                 (_, _) =>
                     builder
-                        .AddHocon(journalOptions.ToConfig(), HoconAddMode.Prepend)
-                        .AddHocon(snapshotOptions.ToConfig(), HoconAddMode.Prepend)
-                        .AddHocon(journalOptions.DefaultConfig, HoconAddMode.Append)
-                        .AddHocon(snapshotOptions.DefaultConfig, HoconAddMode.Append)
-                        .AddHocon(RavenDbPersistence.DefaultConfiguration(), HoconAddMode.Append),
+                        .WithRavenDbPersistence(journalOptions)
+                        .WithRavenDbPersistence(snapshotOptions)
             };
+        }
+
+        /// <summary>
+        ///     Add an RavenDB journal Akka.Persistence implementations for a given <see cref="ActorSystem"/>.
+        /// </summary>
+        /// <param name="builder">
+        ///     The <see cref="AkkaConfigurationBuilder"/> builder instance being configured.
+        /// </param>
+        /// <param name="options">
+        ///     An <see cref="RavenDbJournalOptions"/> instance that will be used to set up
+        ///     the RavenDb journal.
+        /// </param>
+        /// <returns>
+        ///     The same <see cref="AkkaConfigurationBuilder"/> instance originally passed in.
+        /// </returns>
+        public static AkkaConfigurationBuilder WithRavenDbPersistence(
+            this AkkaConfigurationBuilder builder,
+            RavenDbJournalOptions options)
+        {
+            if (options is null)
+                throw new ArgumentNullException(nameof(options));
+
+            builder.AddHocon(options.ToConfig(), HoconAddMode.Prepend);
+            options.Apply(builder);
+            builder.AddHocon(options.DefaultConfig, HoconAddMode.Append);
+
+            // Need to add persistence default settings to make sure that persistence message serializer is loaded properly
+            builder.AddHocon(RavenDbPersistence.DefaultConfiguration(), HoconAddMode.Append);
+
+            return builder;
+        }
+
+        /// <summary>
+        ///     Add an RavenDB snapshot store Akka.Persistence implementations for a given <see cref="ActorSystem"/>.
+        /// </summary>
+        /// <param name="builder">
+        ///     The <see cref="AkkaConfigurationBuilder"/> builder instance being configured.
+        /// </param>
+        /// <param name="options">
+        ///     An <see cref="RavenDbSnapshotOptions"/> instance that will be used to set up
+        ///     the RavenDb snapshot store.
+        /// </param>
+        /// <returns>
+        ///     The same <see cref="AkkaConfigurationBuilder"/> instance originally passed in.
+        /// </returns>
+        public static AkkaConfigurationBuilder WithRavenDbPersistence(
+            this AkkaConfigurationBuilder builder,
+            RavenDbSnapshotOptions options)
+        {
+            if (options is null)
+                throw new ArgumentNullException(nameof(options));
+
+            builder.AddHocon(options.ToConfig(), HoconAddMode.Prepend);
+            options.Apply(builder);
+            builder.AddHocon(options.DefaultConfig, HoconAddMode.Append);
+
+            // Need to add persistence default settings to make sure that persistence message serializer is loaded properly
+            builder.AddHocon(RavenDbPersistence.DefaultConfiguration(), HoconAddMode.Append);
+
+            return builder;
         }
     }
 }
