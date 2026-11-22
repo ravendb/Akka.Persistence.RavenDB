@@ -2,7 +2,6 @@
 using Akka.Hosting;
 using Akka.Persistence.Hosting;
 using Akka.Persistence.RavenDb.Hosting;
-using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Raven.Client.Http;
@@ -45,10 +44,10 @@ namespace Akka.Persistence.RavenDb.Tests.Hosting
             var persistence = RavenDbPersistence.Get(actorSystem);
             
             var journalStore = new RavenDbStore(persistence.JournalConfiguration);
-            journalStore.Instance.Certificate.Should().BeNull();
-            journalStore.Instance.Conventions.SaveEnumsAsIntegers.Should().Be(false);
-            journalStore.Instance.Conventions.LoadBalanceBehavior.Should().Be(LoadBalanceBehavior.UseSessionContext);
-            journalStore.Instance.Conventions.HttpVersion.Should().Be(new Version(2, 0));
+            Assert.Null(journalStore.Instance.Certificate);
+            Assert.False(journalStore.Instance.Conventions.SaveEnumsAsIntegers);
+            Assert.Equal(LoadBalanceBehavior.UseSessionContext, journalStore.Instance.Conventions.LoadBalanceBehavior);
+            Assert.Equal(new Version(2, 0), journalStore.Instance.Conventions.HttpVersion);
         }
 
         [Fact]
@@ -89,17 +88,17 @@ namespace Akka.Persistence.RavenDb.Tests.Hosting
             var persistence = RavenDbPersistence.Get(actorSystem);
 
             var journalStore = new RavenDbStore(persistence.JournalConfiguration);
-            journalStore.Instance.Certificate.Should().NotBeNull();
-            journalStore.Instance.Certificate.Should().Be(journalCert);
-            journalStore.Instance.Conventions.SaveEnumsAsIntegers.Should().Be(false);
-            journalStore.Instance.Conventions.LoadBalanceBehavior.Should().Be(LoadBalanceBehavior.UseSessionContext);
-            journalStore.Instance.Conventions.HttpVersion.Should().Be(new Version(2, 0));
+            Assert.NotNull(journalStore.Instance.Certificate);
+            Assert.Equal(journalCert, journalStore.Instance.Certificate);
+            Assert.False(journalStore.Instance.Conventions.SaveEnumsAsIntegers);
+            Assert.Equal(LoadBalanceBehavior.UseSessionContext, journalStore.Instance.Conventions.LoadBalanceBehavior);
+            Assert.Equal(new Version(2, 0), journalStore.Instance.Conventions.HttpVersion);
 
             var snapshotStore = new RavenDbStore(persistence.SnapshotConfiguration);
-            snapshotStore.Instance.Certificate.Should().NotBeNull();
-            snapshotStore.Instance.Certificate.Should().Be(snapshotCert);
-            snapshotStore.Instance.Conventions.DisableTopologyCache.Should().Be(true);
-            snapshotStore.Instance.Conventions.HttpVersion.Should().Be(new Version(1, 0));
+            Assert.NotNull(snapshotStore.Instance.Certificate);
+            Assert.Equal(snapshotCert, snapshotStore.Instance.Certificate);
+            Assert.True(snapshotStore.Instance.Conventions.DisableTopologyCache);
+            Assert.Equal(new Version(1, 0), snapshotStore.Instance.Conventions.HttpVersion);
         }
 
         [Fact]
@@ -131,18 +130,18 @@ namespace Akka.Persistence.RavenDb.Tests.Hosting
             var persistence = RavenDbPersistence.Get(actorSystem);
 
             var journalStore = new RavenDbStore(persistence.JournalConfiguration);
-            journalStore.Instance.Certificate.Should().NotBeNull();
-            journalStore.Instance.Certificate.Should().Be(cert);
-            journalStore.Instance.Conventions.SaveEnumsAsIntegers.Should().Be(false);
-            journalStore.Instance.Conventions.LoadBalanceBehavior.Should().Be(LoadBalanceBehavior.UseSessionContext);
-            journalStore.Instance.Conventions.HttpVersion.Should().Be(new Version(2, 0));
+            Assert.NotNull(journalStore.Instance.Certificate);
+            Assert.Equal(cert, journalStore.Instance.Certificate);
+            Assert.False(journalStore.Instance.Conventions.SaveEnumsAsIntegers);
+            Assert.Equal(LoadBalanceBehavior.UseSessionContext, journalStore.Instance.Conventions.LoadBalanceBehavior);
+            Assert.Equal(new Version(2, 0), journalStore.Instance.Conventions.HttpVersion);
 
             var snapshotStore = new RavenDbStore(persistence.SnapshotConfiguration);
-            snapshotStore.Instance.Certificate.Should().NotBeNull();
-            snapshotStore.Instance.Certificate.Should().Be(cert);
-            snapshotStore.Instance.Conventions.SaveEnumsAsIntegers.Should().Be(false);
-            snapshotStore.Instance.Conventions.LoadBalanceBehavior.Should().Be(LoadBalanceBehavior.UseSessionContext);
-            snapshotStore.Instance.Conventions.HttpVersion.Should().Be(new Version(2, 0));
+            Assert.NotNull(snapshotStore.Instance.Certificate);
+            Assert.Equal(cert, snapshotStore.Instance.Certificate);
+            Assert.False(snapshotStore.Instance.Conventions.SaveEnumsAsIntegers);
+            Assert.Equal(LoadBalanceBehavior.UseSessionContext, snapshotStore.Instance.Conventions.LoadBalanceBehavior);
+            Assert.Equal(new Version(2, 0), snapshotStore.Instance.Conventions.HttpVersion);
         }
 
         [Fact]
