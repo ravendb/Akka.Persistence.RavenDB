@@ -12,7 +12,7 @@
     <Compile Include="..\CommonAssemblyInfo.cs" Link="Properties\CommonAssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="Akka.Persistence.Hosting" Version="1.5.37.2" />
+    <PackageReference Include="Akka.Persistence.Hosting" Version="1.5.75" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Akka.Persistence.RavenDB\Akka.Persistence.RavenDb.csproj" />

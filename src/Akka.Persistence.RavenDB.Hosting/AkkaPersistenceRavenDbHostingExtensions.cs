@@ -97,10 +97,6 @@ namespace Akka.Persistence.RavenDb.Hosting
                 AutoInitialize = autoInitialize,
             };
 
-            var adapters = new AkkaPersistenceJournalBuilder(journalOpt.Identifier, builder);
-            journalBuilder?.Invoke(adapters);
-            journalOpt.Adapters = adapters;
-
             var snapshotOpt = new RavenDbSnapshotOptions(isDefaultPlugin, pluginIdentifier)
             {
                 Urls = urls,
@@ -115,9 +111,9 @@ namespace Akka.Persistence.RavenDb.Hosting
 
             return mode switch
             {
-                PersistenceMode.Journal => builder.WithRavenDbPersistence(journalOpt, null),
-                PersistenceMode.SnapshotStore => builder.WithRavenDbPersistence(null, snapshotOpt),
-                PersistenceMode.Both => builder.WithRavenDbPersistence(journalOpt, snapshotOpt),
+                PersistenceMode.Journal => AddRavenDbJournal(builder, journalOpt, journalBuilder),
+                PersistenceMode.SnapshotStore => builder.WithRavenDbPersistence(snapshotOpt),
+                PersistenceMode.Both => AddRavenDbJournal(builder, journalOpt, journalBuilder).WithRavenDbPersistence(snapshotOpt),
                 _ => throw new ArgumentOutOfRangeException(nameof(mode), mode, "Invalid PersistenceMode defined.")
             };
         }
@@ -147,10 +143,6 @@ namespace Akka.Persistence.RavenDb.Hosting
                 AutoInitialize = autoInitialize,
             };
 
-            var adapters = new AkkaPersistenceJournalBuilder(journalOpt.Identifier, builder);
-            journalBuilder?.Invoke(adapters);
-            journalOpt.Adapters = adapters;
-
             var snapshotOpt = new RavenDbSnapshotOptions(isDefaultPlugin, pluginIdentifier)
             {
                 Urls = urls,
@@ -162,9 +154,9 @@ namespace Akka.Persistence.RavenDb.Hosting
 
             return mode switch
             {
-                PersistenceMode.Journal => builder.WithRavenDbPersistence(journalOpt, null),
-                PersistenceMode.SnapshotStore => builder.WithRavenDbPersistence(null, snapshotOpt),
-                PersistenceMode.Both => builder.WithRavenDbPersistence(journalOpt, snapshotOpt),
+                PersistenceMode.Journal => AddRavenDbJournal(builder, journalOpt, journalBuilder),
+                PersistenceMode.SnapshotStore => builder.WithRavenDbPersistence(snapshotOpt),
+                PersistenceMode.Both => AddRavenDbJournal(builder, journalOpt, journalBuilder).WithRavenDbPersistence(snapshotOpt),
                 _ => throw new ArgumentOutOfRangeException(nameof(mode), mode, "Invalid PersistenceMode defined.")
             };
         }
@@ -311,13 +303,19 @@ namespace Akka.Persistence.RavenDb.Hosting
         public static AkkaConfigurationBuilder WithRavenDbPersistence(
             this AkkaConfigurationBuilder builder,
             RavenDbJournalOptions options)
+            => AddRavenDbJournal(builder, options, journalBuilder: null);
+
+        private static AkkaConfigurationBuilder AddRavenDbJournal(
+            AkkaConfigurationBuilder builder,
+            RavenDbJournalOptions options,
+            Action<AkkaPersistenceJournalBuilder>? journalBuilder)
         {
             if (options is null)
                 throw new ArgumentNullException(nameof(options));
 
-            builder.AddHocon(options.ToConfig(), HoconAddMode.Prepend);
+            // Adds the journal HOCON and registers the event adapters configured by journalBuilder
+            builder.WithJournal(options, journalBuilder);
             options.Apply(builder);
-            builder.AddHocon(options.DefaultConfig, HoconAddMode.Append);
 
             // Need to add persistence default settings to make sure that persistence message serializer is loaded properly
             builder.AddHocon(RavenDbPersistence.DefaultConfiguration(), HoconAddMode.Append);
