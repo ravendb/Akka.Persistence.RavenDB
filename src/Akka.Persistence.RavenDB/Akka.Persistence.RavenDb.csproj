@@ -23,8 +23,8 @@
 
   <ItemGroup>
     <PackageReference Include="Akka.Persistence.Query" Version="1.5.75" />
-    <PackageReference Include="Microsoft.Bcl.AsyncInterfaces" Version="9.0.2" />
-    <PackageReference Include="RavenDB.Client" Version="6.2.3" />
+    <PackageReference Include="Microsoft.Bcl.AsyncInterfaces" Version="10.0.12" />
+    <PackageReference Include="RavenDB.Client" Version="7.2.7" />
     <PackageReference Include="Raven.CodeAnalysis" Version="1.0.11" PrivateAssets="All" />
   </ItemGroup>
 
