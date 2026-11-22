@@ -1,6 +1,7 @@
 ﻿using Akka.Actor;
 using Akka.Hosting;
 using Akka.Persistence.Hosting;
+using Akka.Persistence.Journal;
 using Akka.Persistence.RavenDb.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -166,6 +167,49 @@ namespace Akka.Persistence.RavenDb.Tests.Hosting
 
             var error = await Assert.ThrowsAsync<ConfigurationException>(async () => host.Services.GetRequiredService<ActorSystem>());
             Assert.Contains("one must be provided", error.Message);
+        }
+
+        [Fact]
+        public async Task RavenDbPersistenceAppliesEventAdaptersFromJournalBuilder()
+        {
+            using var host = new HostBuilder()
+                .ConfigureServices((context, services) =>
+                {
+                    services.AddAkka(_actorSystemName, (builder, provider) =>
+                    {
+                        builder.WithRavenDbPersistence(
+                            urls: ["http://localhost:8080"],
+                            databaseName: _databaseName,
+                            mode: PersistenceMode.Journal,
+                            journalBuilder: journal => journal.AddWriteEventAdapter<TaggingEventAdapter>("tagger", [typeof(AdaptedEvent)]),
+                            autoInitialize: false);
+                    });
+                }).Build();
+
+            var actorSystem = host.Services.GetRequiredService<ActorSystem>();
+            try
+            {
+                // Ask Akka which adapter the journal will use for this event type
+                var adapter = Persistence.Instance.Apply(actorSystem).AdaptersFor("akka.persistence.journal.ravendb").Get(typeof(AdaptedEvent));
+
+                var tagged = Assert.IsType<Tagged>(adapter.ToJournal(new AdaptedEvent()));
+                Assert.Equal(TaggingEventAdapter.Tag, Assert.Single(tagged.Tags));
+            }
+            finally
+            {
+                await actorSystem.Terminate();
+            }
+        }
+
+        public sealed record AdaptedEvent;
+
+        public sealed class TaggingEventAdapter : IWriteEventAdapter
+        {
+            public const string Tag = "hosting-adapter";
+
+            public string Manifest(object evt) => string.Empty;
+
+            public object ToJournal(object evt) => new Tagged(evt, new[] { Tag });
         }
     }
 }
