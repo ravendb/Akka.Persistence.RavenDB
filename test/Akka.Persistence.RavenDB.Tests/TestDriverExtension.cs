@@ -19,7 +19,7 @@ namespace Akka.Persistence.RavenDb.Tests
             {
                 DisableTopologyCache = true
             },
-            Certificate = Secure ? new X509Certificate2(CertificatePath, CertificatePassword) : null
+            Certificate = Secure ? X509CertificateLoader.LoadPkcs12FromFile(CertificatePath, CertificatePassword) : null
         }.Initialize();
 
         public static void DeleteDatabase(string databaseName)
