@@ -10,8 +10,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Akka.Persistence.TCK" Version="1.5.37" />
-    <PackageReference Include="Akka.Persistence.TestKit.Xunit2" Version="1.5.37" />
+    <PackageReference Include="Akka.Persistence.TCK.Xunit2" Version="1.5.75" />
+    <PackageReference Include="Akka.Persistence.TestKit.Xunit2" Version="1.5.75" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.2" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.13.0" />
     <PackageReference Include="RavenDB.Client" Version="6.2.3" />

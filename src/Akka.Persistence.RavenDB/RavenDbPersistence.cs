@@ -46,16 +46,22 @@ namespace Akka.Persistence.RavenDb
             _stopTokenSource.Cancel();
         }
 
-        public CancellationTokenSource GetWriteCancellationTokenSource()
+        public CancellationTokenSource GetWriteCancellationTokenSource() => GetWriteCancellationTokenSource(CancellationToken.None);
+
+        // Cancelled when the store stops, the caller cancels, or SaveChangesTimeout elapses
+        public CancellationTokenSource GetWriteCancellationTokenSource(CancellationToken cancellationToken)
         {
-            var cts = CancellationTokenSource.CreateLinkedTokenSource(_stopTokenSource.Token);
+            var cts = CancellationTokenSource.CreateLinkedTokenSource(_stopTokenSource.Token, cancellationToken);
             cts.CancelAfter(Configuration.SaveChangesTimeout);
             return cts;
         }
 
-        public CancellationTokenSource GetReadCancellationTokenSource(TimeSpan? timeout = null)
+        public CancellationTokenSource GetReadCancellationTokenSource(TimeSpan? timeout = null) => GetReadCancellationTokenSource(timeout, CancellationToken.None);
+
+        // Cancelled when the store stops, the caller cancels, or the optional timeout elapses
+        public CancellationTokenSource GetReadCancellationTokenSource(TimeSpan? timeout, CancellationToken cancellationToken)
         {
-            var cts = CancellationTokenSource.CreateLinkedTokenSource(_stopTokenSource.Token);
+            var cts = CancellationTokenSource.CreateLinkedTokenSource(_stopTokenSource.Token, cancellationToken);
             if (timeout == null)
                 return cts;
 

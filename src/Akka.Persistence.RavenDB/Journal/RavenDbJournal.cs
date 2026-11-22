@@ -170,12 +170,12 @@ namespace Akka.Persistence.RavenDb.Journal
         }
 
         // we read the metadata document from all member nodes in order to ensure recovery to the latest state
-        public override async Task<long> ReadHighestSequenceNrAsync(string persistenceId, long fromSequenceNr)
+        public override async Task<long> ReadHighestSequenceNrAsync(string persistenceId, long fromSequenceNr, CancellationToken cancellationToken)
         {
-            using (await GetLocker(persistenceId).WriterLockAsync().ConfigureAwait(false))
+            using (await GetLocker(persistenceId).WriterLockAsync(cancellationToken).ConfigureAwait(false))
             {
                 using var session = _store.Instance.OpenAsyncSession();
-                using var cts = _store.GetReadCancellationTokenSource();
+                using var cts = _store.GetReadCancellationTokenSource(timeout: null, cancellationToken);
                 session.Advanced.SessionInfo.SetContext(persistenceId);
                 session.Advanced.SetTransactionMode(TransactionMode.ClusterWide);
 
@@ -185,10 +185,10 @@ namespace Akka.Persistence.RavenDb.Journal
             }
         }
 
-        protected override async Task<IImmutableList<Exception?>> WriteMessagesAsync(IEnumerable<AtomicWrite> messages)
+        protected override async Task<IImmutableList<Exception?>> WriteMessagesAsync(IEnumerable<AtomicWrite> messages, CancellationToken cancellationToken)
         {
             var builder = ImmutableList.CreateBuilder<Exception?>();
-            using var cts = _store.GetWriteCancellationTokenSource();
+            using var cts = _store.GetWriteCancellationTokenSource(cancellationToken);
             var writes = new Dictionary<string, Task>();
             var original = messages.ToList();
 
@@ -268,14 +268,14 @@ namespace Akka.Persistence.RavenDb.Journal
             await session.SaveChangesAsync(cts.Token).ConfigureAwait(false);
         }
 
-        protected override async Task DeleteMessagesToAsync(string persistenceId, long toSequenceNr)
+        protected override async Task DeleteMessagesToAsync(string persistenceId, long toSequenceNr, CancellationToken cancellationToken)
         {
             var batch = 1024;
             int deleted;
             do
             {
                 deleted = 0;
-                using var readCts = _store.GetReadCancellationTokenSource();
+                using var readCts = _store.GetReadCancellationTokenSource(timeout: null, cancellationToken);
                 using var session = _store.Instance.OpenAsyncSession();
                 
                 session.Advanced.SessionInfo.SetContext(persistenceId);
@@ -293,7 +293,7 @@ namespace Akka.Persistence.RavenDb.Journal
                     session.Delete(current.Id);
                 }
 
-                using var writeCts = _store.GetReadCancellationTokenSource();
+                using var writeCts = _store.GetReadCancellationTokenSource(timeout: null, cancellationToken);
                 await session.SaveChangesAsync(writeCts.Token).ConfigureAwait(false);
             } while (deleted == batch);
         }
