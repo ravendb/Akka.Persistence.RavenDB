@@ -186,7 +186,33 @@ namespace Akka.Persistence.RavenDb.Tests.Hosting
                     });
                 }).Build();
 
-            var actorSystem = host.Services.GetRequiredService<ActorSystem>();
+            await AssertTaggingEventAdapterIsApplied(host.Services.GetRequiredService<ActorSystem>());
+        }
+
+        [Fact]
+        public async Task RavenDbPersistenceWithOptionsAppliesEventAdaptersFromJournalBuilder()
+        {
+            using var host = new HostBuilder()
+                .ConfigureServices((context, services) =>
+                {
+                    services.AddAkka(_actorSystemName, (builder, provider) =>
+                    {
+                        builder.WithRavenDbPersistence(
+                            journalOptions: new RavenDbJournalOptions
+                            {
+                                Urls = ["http://localhost:8080"],
+                                Name = _databaseName,
+                                AutoInitialize = false
+                            },
+                            journalBuilder: journal => journal.AddWriteEventAdapter<TaggingEventAdapter>("tagger", [typeof(AdaptedEvent)]));
+                    });
+                }).Build();
+
+            await AssertTaggingEventAdapterIsApplied(host.Services.GetRequiredService<ActorSystem>());
+        }
+
+        private static async Task AssertTaggingEventAdapterIsApplied(ActorSystem actorSystem)
+        {
             try
             {
                 // Ask Akka which adapter the journal will use for this event type

@@ -255,6 +255,13 @@ namespace Akka.Persistence.RavenDb.Hosting
         ///     </para>
         ///     <i>Default</i>: <c>null</c>
         /// </param>
+        /// <param name="journalBuilder">
+        ///     <para>
+        ///         An <see cref="Action{T}"/> used to configure an <see cref="AkkaPersistenceJournalBuilder"/> instance.
+        ///         Ignored when <paramref name="journalOptions"/> is null.
+        ///     </para>
+        ///     <i>Default</i>: <c>null</c>
+        /// </param>
         /// <returns>
         ///     The same <see cref="AkkaConfigurationBuilder"/> instance originally passed in.
         /// </returns>
@@ -264,7 +271,8 @@ namespace Akka.Persistence.RavenDb.Hosting
         public static AkkaConfigurationBuilder WithRavenDbPersistence(
             this AkkaConfigurationBuilder builder,
             RavenDbJournalOptions? journalOptions = null,
-            RavenDbSnapshotOptions? snapshotOptions = null)
+            RavenDbSnapshotOptions? snapshotOptions = null,
+            Action<AkkaPersistenceJournalBuilder>? journalBuilder = null)
         {
             if (journalOptions is null && snapshotOptions is null)
                 throw new ArgumentException($"{nameof(journalOptions)} and {nameof(snapshotOptions)} could not both be null");
@@ -275,14 +283,13 @@ namespace Akka.Persistence.RavenDb.Hosting
                     throw new ArgumentException($"{nameof(journalOptions)} and {nameof(snapshotOptions)} could not both be null"),
 
                 (_, null) =>
-                    builder.WithRavenDbPersistence(journalOptions),
+                    AddRavenDbJournal(builder, journalOptions, journalBuilder),
 
                 (null, _) =>
                     builder.WithRavenDbPersistence(snapshotOptions),
 
                 (_, _) =>
-                    builder
-                        .WithRavenDbPersistence(journalOptions)
+                    AddRavenDbJournal(builder, journalOptions, journalBuilder)
                         .WithRavenDbPersistence(snapshotOptions)
             };
         }
