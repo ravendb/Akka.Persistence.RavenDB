@@ -86,7 +86,7 @@ namespace Akka.Persistence.RavenDb.Snapshot
             base.PostStop();
         }
 
-        protected override async Task<SelectedSnapshot> LoadAsync(string persistenceId, SnapshotSelectionCriteria criteria)
+        protected override async Task<SelectedSnapshot> LoadAsync(string persistenceId, SnapshotSelectionCriteria criteria, CancellationToken cancellationToken)
         {
             // need to find the most up-to-date snapshot
             // TODO: add API to scan backwards !!
@@ -96,7 +96,7 @@ namespace Akka.Persistence.RavenDb.Snapshot
             session.Advanced.SessionInfo.SetContext(persistenceId);
             session.Advanced.SetTransactionMode(TransactionMode.ClusterWide);
 
-            using var cts = _store.GetReadCancellationTokenSource();
+            using var cts = _store.GetReadCancellationTokenSource(timeout: null, cancellationToken);
 
             await using var results = await session.Advanced.StreamAsync<Types.Snapshot>(startsWith: GetSnapshotPrefix(persistenceId), startAfter: GetSnapshotId(persistenceId, criteria.MinSequenceNr - 1), token: cts.Token).ConfigureAwait(false);
             Types.Snapshot lastValidSnapshot = null; // yuck!
@@ -118,13 +118,13 @@ namespace Akka.Persistence.RavenDb.Snapshot
             return lastValidSnapshot.ToSelectedSnapshot(_serialization);
         }
 
-        protected override async Task SaveAsync(SnapshotMetadata metadata, object snapshot)
+        protected override async Task SaveAsync(SnapshotMetadata metadata, object snapshot, CancellationToken cancellationToken)
         {
             using var session = _store.Instance.OpenAsyncSession();
             session.Advanced.SessionInfo.SetContext(metadata.PersistenceId);
             session.Advanced.SetTransactionMode(TransactionMode.ClusterWide);
 
-            using var cts = _store.GetWriteCancellationTokenSource();
+            using var cts = _store.GetWriteCancellationTokenSource(cancellationToken);
             var id = GetSnapshotId(metadata);
             var snapshotEntity = Types.Snapshot.Serialize(_serialization, metadata, snapshot);
 
@@ -140,14 +140,14 @@ namespace Akka.Persistence.RavenDb.Snapshot
             await session.SaveChangesAsync(cts.Token).ConfigureAwait(false);
         }
 
-        protected override async Task DeleteAsync(SnapshotMetadata metadata)
+        protected override async Task DeleteAsync(SnapshotMetadata metadata, CancellationToken cancellationToken)
         {
             var id = GetSnapshotId(metadata);
             using var session = _store.Instance.OpenAsyncSession();
             session.Advanced.SessionInfo.SetContext(metadata.PersistenceId);
             session.Advanced.SetTransactionMode(TransactionMode.ClusterWide);
 
-            using var cts = _store.GetWriteCancellationTokenSource();
+            using var cts = _store.GetWriteCancellationTokenSource(cancellationToken);
             var snapshot = await session.LoadAsync<Types.Snapshot>(id, cts.Token).ConfigureAwait(false);
             if (snapshot.Timestamp > metadata.Timestamp && metadata.Timestamp > DateTime.MinValue) // due to fixes done here: https://github.com/akkadotnet/akka.net/pull/7313
                 return;
@@ -156,11 +156,11 @@ namespace Akka.Persistence.RavenDb.Snapshot
             await session.SaveChangesAsync(cts.Token).ConfigureAwait(false);
         }
 
-        protected override async Task DeleteAsync(string persistenceId, SnapshotSelectionCriteria criteria)
+        protected override async Task DeleteAsync(string persistenceId, SnapshotSelectionCriteria criteria, CancellationToken cancellationToken)
         {
             //TODO delete by prefix (upto)
             using var session = _store.Instance.OpenAsyncSession();
-            using var readCts = _store.GetReadCancellationTokenSource();
+            using var readCts = _store.GetReadCancellationTokenSource(timeout: null, cancellationToken);
             session.Advanced.SessionInfo.SetContext(persistenceId);
             session.Advanced.SetTransactionMode(TransactionMode.ClusterWide);
 
@@ -176,7 +176,7 @@ namespace Akka.Persistence.RavenDb.Snapshot
                     session.Delete(results.Current.Id);
             }
 
-            using var writeCts = _store.GetWriteCancellationTokenSource();
+            using var writeCts = _store.GetWriteCancellationTokenSource(cancellationToken);
             await session.SaveChangesAsync(writeCts.Token).ConfigureAwait(false);
         }
 

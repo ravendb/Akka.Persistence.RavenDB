@@ -5,9 +5,9 @@ using System.Resources;
 
 [assembly: AssemblyCopyright("© Hibernating Rhinos 2009 - 2024 All rights reserved.")]
 
-[assembly: AssemblyVersion("1.5.37")]
-[assembly: AssemblyFileVersion("1.5.37")]
-[assembly: AssemblyInformationalVersion("1.5.37")]
+[assembly: AssemblyVersion("1.5.75")]
+[assembly: AssemblyFileVersion("1.5.75")]
+[assembly: AssemblyInformationalVersion("1.5.75")]
 
 #if DEBUG
 [assembly: AssemblyConfiguration("Debug")]

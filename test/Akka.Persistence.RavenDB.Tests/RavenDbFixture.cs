@@ -1,4 +1,5 @@
 ﻿using Akka.Configuration;
+using Akka.Persistence.TCK.Query;
 using Akka.Util.Internal;
 using Raven.Embedded;
 using Raven.TestDriver;
@@ -57,7 +58,7 @@ namespace Akka.Persistence.RavenDb.Tests
                                              http-version = "2.0"
                                              
                                              event-adapters {
-                                                  color-tagger  = "Akka.Persistence.TCK.Query.ColorFruitTagger, Akka.Persistence.TCK"
+                                                  color-tagger  = "{{{{{typeof(ColorFruitTagger).FullName}}}}}, {{{{{typeof(ColorFruitTagger).Assembly.GetName().Name}}}}}"
                                               }
                                               event-adapter-bindings = {
                                                   "System.String" = color-tagger

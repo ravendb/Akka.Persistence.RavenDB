@@ -1,8 +1,6 @@
 ﻿using System.Net;
 using Akka.Configuration;
 using Akka.Persistence.RavenDb.Hosting;
-using FluentAssertions;
-using FluentAssertions.Extensions;
 using Microsoft.Extensions.Configuration;
 using System.Text;
 
@@ -16,8 +14,8 @@ namespace Akka.Persistence.RavenDb.Tests.Hosting
             var options = new RavenDbJournalOptions(true);
             var config = options.ToConfig();
 
-            config.GetString("akka.persistence.journal.plugin").Should().Be("akka.persistence.journal.ravendb");
-            config.HasPath("akka.persistence.journal.ravendb").Should().BeTrue();
+            Assert.Equal("akka.persistence.journal.ravendb", config.GetString("akka.persistence.journal.plugin"));
+            Assert.True(config.HasPath("akka.persistence.journal.ravendb"));
         }
 
         [Fact(DisplayName = "Empty RavenDbJournalOptions should equal empty config with default fallback")]
@@ -28,22 +26,22 @@ namespace Akka.Persistence.RavenDb.Tests.Hosting
             var baseRootConfig = Config.Empty
                 .WithFallback(RavenDbPersistence.DefaultConfiguration());
 
-            emptyRootConfig.GetString("akka.persistence.journal.plugin").Should().Be(baseRootConfig.GetString("akka.persistence.journal.plugin"));
+            Assert.Equal(baseRootConfig.GetString("akka.persistence.journal.plugin"), emptyRootConfig.GetString("akka.persistence.journal.plugin"));
 
             var config = emptyRootConfig.GetConfig("akka.persistence.journal.ravendb");
             var baseConfig = baseRootConfig.GetConfig("akka.persistence.journal.ravendb");
-            config.Should().NotBeNull();
-            baseConfig.Should().NotBeNull();
+            Assert.NotNull(config);
+            Assert.NotNull(baseConfig);
 
-            config.GetString("class").Should().Be(baseConfig.GetString("class"));
-            config.GetBoolean("auto-initialize").Should().Be(baseConfig.GetBoolean("auto-initialize"));
-            config.GetString("plugin-dispatcher").Should().Be(baseConfig.GetString("plugin-dispatcher"));
-            config.GetString("name").Should().Be(baseConfig.GetString("name"));
-            config.GetStringList("urls").Should().BeEquivalentTo(baseConfig.GetStringList("urls"));
-            config.GetString("certificate-path").Should().Be(baseConfig.GetString("certificate-path"));
-            config.GetString("http-version").Should().Be(baseConfig.GetString("http-version"));
-            config.GetBoolean("disable-tcp-compression").Should().Be(baseConfig.GetBoolean("disable-tcp-compression"));
-            config.GetTimeSpan("save-changes-timeout").Should().Be(baseConfig.GetTimeSpan("save-changes-timeout"));
+            Assert.Equal(baseConfig.GetString("class"), config.GetString("class"));
+            Assert.Equal(baseConfig.GetBoolean("auto-initialize"), config.GetBoolean("auto-initialize"));
+            Assert.Equal(baseConfig.GetString("plugin-dispatcher"), config.GetString("plugin-dispatcher"));
+            Assert.Equal(baseConfig.GetString("name"), config.GetString("name"));
+            Assert.Equal(baseConfig.GetStringList("urls"), config.GetStringList("urls"));
+            Assert.Equal(baseConfig.GetString("certificate-path"), config.GetString("certificate-path"));
+            Assert.Equal(baseConfig.GetString("http-version"), config.GetString("http-version"));
+            Assert.Equal(baseConfig.GetBoolean("disable-tcp-compression"), config.GetBoolean("disable-tcp-compression"));
+            Assert.Equal(baseConfig.GetTimeSpan("save-changes-timeout"), config.GetTimeSpan("save-changes-timeout"));
         }
 
         [Fact(DisplayName = "Empty RavenDbJournalOptions with custom identifier should equal empty config with default fallback")]
@@ -54,22 +52,22 @@ namespace Akka.Persistence.RavenDb.Tests.Hosting
             var baseRootConfig = Config.Empty
                 .WithFallback(RavenDbPersistence.DefaultConfiguration());
 
-            emptyRootConfig.GetString("akka.persistence.journal.plugin").Should().Be(baseRootConfig.GetString("akka.persistence.journal.plugin"));
+            Assert.Equal(baseRootConfig.GetString("akka.persistence.journal.plugin"), emptyRootConfig.GetString("akka.persistence.journal.plugin"));
 
             var config = emptyRootConfig.GetConfig("akka.persistence.journal.custom");
             var baseConfig = baseRootConfig.GetConfig("akka.persistence.journal.ravendb");
-            config.Should().NotBeNull();
-            baseConfig.Should().NotBeNull();
+            Assert.NotNull(config);
+            Assert.NotNull(baseConfig);
 
-            config.GetString("class").Should().Be(baseConfig.GetString("class"));
-            config.GetBoolean("auto-initialize").Should().Be(baseConfig.GetBoolean("auto-initialize"));
-            config.GetString("plugin-dispatcher").Should().Be(baseConfig.GetString("plugin-dispatcher"));
-            config.GetString("name").Should().Be(baseConfig.GetString("name"));
-            config.GetStringList("urls").Should().BeEquivalentTo(baseConfig.GetStringList("urls"));
-            config.GetString("certificate-path").Should().Be(baseConfig.GetString("certificate-path"));
-            config.GetString("http-version").Should().Be(baseConfig.GetString("http-version"));
-            config.GetBoolean("disable-tcp-compression").Should().Be(baseConfig.GetBoolean("disable-tcp-compression"));
-            config.GetTimeSpan("save-changes-timeout").Should().Be(baseConfig.GetTimeSpan("save-changes-timeout"));
+            Assert.Equal(baseConfig.GetString("class"), config.GetString("class"));
+            Assert.Equal(baseConfig.GetBoolean("auto-initialize"), config.GetBoolean("auto-initialize"));
+            Assert.Equal(baseConfig.GetString("plugin-dispatcher"), config.GetString("plugin-dispatcher"));
+            Assert.Equal(baseConfig.GetString("name"), config.GetString("name"));
+            Assert.Equal(baseConfig.GetStringList("urls"), config.GetStringList("urls"));
+            Assert.Equal(baseConfig.GetString("certificate-path"), config.GetString("certificate-path"));
+            Assert.Equal(baseConfig.GetString("http-version"), config.GetString("http-version"));
+            Assert.Equal(baseConfig.GetBoolean("disable-tcp-compression"), config.GetBoolean("disable-tcp-compression"));
+            Assert.Equal(baseConfig.GetTimeSpan("save-changes-timeout"), config.GetTimeSpan("save-changes-timeout"));
         }
 
         [Fact(DisplayName = "RavenDbJournalOptions should generate proper config")]
@@ -89,17 +87,17 @@ namespace Akka.Persistence.RavenDb.Tests.Hosting
 
             var baseConfig = options.ToConfig();
 
-            baseConfig.GetString("akka.persistence.journal.plugin").Should().Be("akka.persistence.journal.custom");
+            Assert.Equal("akka.persistence.journal.custom", baseConfig.GetString("akka.persistence.journal.plugin"));
 
             var config = baseConfig.GetConfig("akka.persistence.journal.custom");
-            config.Should().NotBeNull();
-            config.GetBoolean("auto-initialize").Should().Be(options.AutoInitialize);
-            config.GetStringList("urls").Should().BeEquivalentTo(options.Urls);
-            config.GetString("name").Should().Be(options.Name);
-            config.GetString("certificate-path").Should().Be(options.CertificatePath);
-            config.GetString("http-version").Should().Be(options.HttpVersion.ToString());
-            config.GetBoolean("disable-tcp-compression").Should().Be(options.DisableTcpCompression.Value);
-            config.GetTimeSpan("save-changes-timeout").Should().Be(options.SaveChangesTimeout.Value);
+            Assert.NotNull(config);
+            Assert.Equal(options.AutoInitialize, config.GetBoolean("auto-initialize"));
+            Assert.Equal(options.Urls, config.GetStringList("urls"));
+            Assert.Equal(options.Name, config.GetString("name"));
+            Assert.Equal(options.CertificatePath, config.GetString("certificate-path"));
+            Assert.Equal(options.HttpVersion.ToString(), config.GetString("http-version"));
+            Assert.Equal(options.DisableTcpCompression.Value, config.GetBoolean("disable-tcp-compression"));
+            Assert.Equal(options.SaveChangesTimeout.Value, config.GetTimeSpan("save-changes-timeout"));
         }
         
         const string Json = @"
@@ -127,16 +125,16 @@ namespace Akka.Persistence.RavenDb.Tests.Hosting
             var jsonConfig = new ConfigurationBuilder().AddJsonStream(stream).Build();
 
             var options = jsonConfig.GetSection("Akka:JournalOptions").Get<RavenDbJournalOptions>();
-            options.Urls.Should().BeEquivalentTo(new string[] {"http://localhost:8081"});
-            options.Identifier.Should().Be("customravendb");
-            options.AutoInitialize.Should().BeTrue();
-            options.IsDefaultPlugin.Should().BeFalse();
-            options.Name.Should().Be("CustomJournalDb");
-            options.CertificatePath.Should().Be(@"C:\Work\Akka\cert.pfx");
-            options.HttpVersion.Should().Be(HttpVersion.Version11);
-            options.SaveChangesTimeout.Should().Be(10.Minutes());
-            options.Serializer.Should().Be("hyperion");
-            options.DisableTcpCompression.Should().BeFalse();
+            Assert.Equal(new string[] {"http://localhost:8081"}, options.Urls);
+            Assert.Equal("customravendb", options.Identifier);
+            Assert.True(options.AutoInitialize);
+            Assert.False(options.IsDefaultPlugin);
+            Assert.Equal("CustomJournalDb", options.Name);
+            Assert.Equal(@"C:\Work\Akka\cert.pfx", options.CertificatePath);
+            Assert.Equal(HttpVersion.Version11, options.HttpVersion);
+            Assert.Equal(TimeSpan.FromMinutes(10), options.SaveChangesTimeout);
+            Assert.Equal("hyperion", options.Serializer);
+            Assert.False(options.DisableTcpCompression);
         }
     }
 }
