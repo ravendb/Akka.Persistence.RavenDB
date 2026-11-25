@@ -6,6 +6,7 @@ $ErrorActionPreference = "Stop"
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
 . '.\scripts\checkLastExitCode.ps1'
+. '.\scripts\exec.ps1'
 . '.\scripts\checkPrerequisites.ps1'
 . '.\scripts\clean.ps1'
 . '.\scripts\getScriptDirectory.ps1'
