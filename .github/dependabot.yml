@@ -1,21 +1,17 @@
 version: 2
+multi-ecosystem-groups:
+  dependencies:
+    schedule:
+      interval: "quarterly"
 updates:
   - package-ecosystem: "nuget"
     directory: "/"
-    schedule:
-      interval: "quarterly"
-    open-pull-requests-limit: 5
-    groups:
-      akka:
-        patterns: ["Akka.*"]
-      ravendb:
-        patterns: ["RavenDB.*", "Raven.CodeAnalysis", "Microsoft.Bcl.AsyncInterfaces"]
-      test-tools:
-        patterns: ["Microsoft.NET.Test.Sdk", "coverlet.*", "xunit*", "Microsoft.Extensions.Hosting"]
+    patterns: ["*"]
+    multi-ecosystem-group: "dependencies"
     ignore:
       - dependency-name: "Microsoft.Bcl.AsyncInterfaces"
         update-types: ["version-update:semver-major"]
   - package-ecosystem: "github-actions"
     directory: "/"
-    schedule:
-      interval: "quarterly"
+    patterns: ["*"]
+    multi-ecosystem-group: "dependencies"
