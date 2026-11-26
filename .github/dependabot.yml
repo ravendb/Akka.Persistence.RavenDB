@@ -1,0 +1,17 @@
+version: 2
+multi-ecosystem-groups:
+  dependencies:
+    schedule:
+      interval: "quarterly"
+updates:
+  - package-ecosystem: "nuget"
+    directory: "/"
+    patterns: ["*"]
+    multi-ecosystem-group: "dependencies"
+    ignore:
+      - dependency-name: "Microsoft.Bcl.AsyncInterfaces"
+        update-types: ["version-update:semver-major"]
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    patterns: ["*"]
+    multi-ecosystem-group: "dependencies"
